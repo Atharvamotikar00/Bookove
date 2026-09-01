@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Upload a book — Bookove</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <a href="index.html" class="wordmark"><img src="images/logo.png" alt="Bookove" class="logo-img" /></a>
+  <nav class="site-nav" id="site-nav">
+    <a href="index.html">Browse</a>
+    <a href="upload.html" class="active">Upload</a>
+  </nav>
+</header>
+
+<div class="upload-wrap">
+  <h1>Add a book to the shelf</h1>
+  <p>PDF, EPUB, TXT, or MOBI. Once it's up, anyone can read it — so please only share what you're allowed to.</p>
+
+  <div id="signed-out-notice" style="display:none;">
+    <div class="checkbox-row" style="align-items:center;">
+      <span>You'll need to sign in first, so books are always tied to a real member — not a typed-in name.</span>
+    </div>
+    <a href="get-started.html" class="btn btn-brass" style="display:inline-block; text-decoration:none;">Sign in to continue</a>
+  </div>
+
+  <form id="upload-form" style="display:none;">
+    <div class="checkbox-row" id="posting-as-row" style="align-items:center;">
+      <span id="posting-as-avatar-wrap"></span>
+      <span>Posting as <strong id="posting-as-name"></strong></span>
+    </div>
+
+    <div class="field">
+      <label for="file">Book file</label>
+      <input type="file" id="file" name="file" accept=".pdf,.epub,.txt,.mobi" required />
+      <div class="hint">Up to 200MB. MOBI is converted to EPUB automatically when possible.</div>
+    </div>
+
+    <div class="field">
+      <label for="title">Title</label>
+      <input type="text" id="title" name="title" required placeholder="e.g. Meditations" />
+    </div>
+
+    <div class="field">
+      <label for="author">Author</label>
+      <input type="text" id="author" name="author" placeholder="e.g. Marcus Aurelius" />
+    </div>
+
+    <div class="field">
+      <label for="description">Description <span class="hint" style="display:inline">(optional)</span></label>
+      <textarea id="description" name="description" placeholder="A short note about the book…"></textarea>
+    </div>
+
+    <label class="checkbox-row">
+      <input type="checkbox" id="isPublicDomain" name="isPublicDomain" />
+      <span><strong>This book is in the public domain</strong> — its copyright has expired or it was never copyrighted.</span>
+    </label>
+
+    <label class="checkbox-row">
+      <input type="checkbox" id="rightsAttested" name="rightsAttested" />
+      <span><strong>I own the rights to this book, or have permission to share it publicly</strong> — e.g. it's my own writing, or I'm the rights holder.</span>
+    </label>
+
+    <button type="submit" class="btn btn-brass">Add to shelf</button>
+    <div id="form-msg" class="form-msg"></div>
+  </form>
+</div>
+
+<script src="js/profile-card.js"></script>
+<script src="js/auth-nav.js"></script>
+<script src="js/upload.js"></script>
+<script src="js/audio-helper.js"></script>
+</body>
+</html>

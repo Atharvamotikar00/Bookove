@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bookove — Your Shelf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- Comic burst decorations -->
+<div class="comic-burst comic-burst-1" aria-hidden="true"></div>
+<div class="comic-burst comic-burst-2" aria-hidden="true"></div>
+<div class="halftone-dots" aria-hidden="true"></div>
+
+<!-- Comic background slideshow -->
+<div class="comic-slideshow" aria-hidden="true">
+  <div class="comic-slideshow-slide" style="background: linear-gradient(135deg, rgba(255,215,0,0.08) 0%, rgba(255,77,77,0.05) 100%);"></div>
+  <div class="comic-slideshow-slide" style="background: linear-gradient(225deg, rgba(255,102,204,0.08) 0%, rgba(153,102,255,0.05) 100%);"></div>
+  <div class="comic-slideshow-slide" style="background: linear-gradient(315deg, rgba(0,204,102,0.08) 0%, rgba(0,204,204,0.05) 100%);"></div>
+</div>
+
+<header class="site-header">
+  <a href="index.html" class="wordmark"><img src="images/logo.png" alt="Bookove" class="logo-img" /></a>
+
+  <div class="header-search">
+    <input type="text" id="search-input" placeholder="Search books…" aria-label="Search books" />
+    <select id="format-filter" aria-label="Filter by format">
+      <option value="">All Formats</option>
+      <option value="pdf">PDF</option>
+      <option value="epub">EPUB</option>
+      <option value="txt">TXT</option>
+      <option value="mobi">MOBI</option>
+    </select>
+  </div>
+
+  <nav class="site-nav" id="site-nav">
+    <!-- auth-nav.js will populate this -->
+  </nav>
+</header>
+
+<main class="book-grid" id="shelves">
+  <p class="empty-state">Loading the shelf…</p>
+</main>
+
+<!-- Bottom navigation (mobile) -->
+<nav class="bottom-nav">
+  <a href="upload.html" class="bottom-nav-item">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Upload
+  </a>
+</nav>
+
+<script src="js/profile-card.js"></script>
+<script src="js/auth-nav.js"></script>
+<script src="js/app.js"></script>
+<script src="js/audio-helper.js"></script>
+</body>
+</html>

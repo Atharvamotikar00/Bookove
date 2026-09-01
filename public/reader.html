@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reading — Bookove</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="css/style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
+</head>
+<body>
+
+<div class="reader-toolbar">
+  <div style="display:flex; align-items:center; gap:14px;">
+    <a href="index.html" style="text-decoration:none; color:var(--paper-muted); font-size:13px;">&larr; Shelf</a>
+    <div>
+      <div class="reader-title" id="reader-title">Loading…</div>
+      <div id="reader-byline" style="font-size:11px; color:var(--paper-muted); font-weight:500;"></div>
+    </div>
+  </div>
+  <div class="reader-actions">
+    <button id="report-btn">Report</button>
+    <a id="download-link" href="#">Download</a>
+  </div>
+</div>
+
+<div class="reader-body" id="reader-body">
+  <div id="txt-view" style="display:none;"></div>
+  <div id="pdf-view" style="display:none;"></div>
+  <div id="epub-view" style="display:none;"></div>
+  <div id="mobi-fallback" class="mobi-fallback" style="display:none;">
+    <h2>This MOBI file can't be read in-browser</h2>
+    <p>The server didn't have a converter available for this file. You can still download it and open it in your e-reader app of choice.</p>
+  </div>
+</div>
+
+<div class="reader-footer" id="pdf-footer" style="display:none;">
+  <button id="pdf-prev">‹ Prev</button>
+  <input type="range" id="pdf-slider" min="1" value="1" />
+  <span id="pdf-page-label" style="font-family: var(--font-mono); white-space:nowrap;"></span>
+  <button id="pdf-next">Next ›</button>
+</div>
+
+<div class="modal-overlay" id="report-modal" style="display:none;">
+  <div class="modal">
+    <h3>Report this book</h3>
+    <p style="font-size:13px; color:var(--paper-muted); margin:0;">Let us know why — e.g. a copyright concern, or it's not what it claims to be.</p>
+    <textarea id="report-reason" placeholder="Reason…"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="report-cancel">Cancel</button>
+      <button class="btn btn-danger" id="report-submit">Submit report</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/profile-card.js"></script>
+<script src="js/reader.js"></script>
+<script src="js/audio-helper.js"></script>
+</body>
+</html>
