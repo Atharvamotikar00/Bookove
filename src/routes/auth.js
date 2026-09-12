@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const passport = require('../auth/passport');
 const users = require('../models/users');
+const { sendOtpEmail } = require('../utils/email');
 
 const router = express.Router();
 
@@ -123,7 +124,7 @@ router.post('/login', (req, res, next) => {
 
 // --- Password Recovery (OTP) -----------------------------------------------
 
-router.post('/forgot-password', (req, res) => {
+router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
   if (!email || !email.trim()) {
     return res.status(400).json({ error: 'Email is required.' });
@@ -138,12 +139,16 @@ router.post('/forgot-password', (req, res) => {
   const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
   users.setOtp(email, otp, expiresAt);
 
-  console.log(`✉️ [OTP Sent to ${email}]: ${otp} (Expires in 10 minutes)`);
+  try {
+    await sendOtpEmail(email, otp);
+  } catch (err) {
+    console.error('Failed to send OTP email:', err);
+    return res.status(500).json({ error: 'Failed to send recovery email. Please try again later.' });
+  }
 
   res.json({
     ok: true,
-    message: 'OTP sent to recovery email address.',
-    debugOtp: otp // Provided for frontend mock notification to ease testing
+    message: 'OTP sent to recovery email address.'
   });
 });
 
@@ -164,6 +169,50 @@ router.post('/reset-password', (req, res) => {
 
   users.updatePassword(user.id, newPassword);
   res.json({ ok: true, message: 'Password updated successfully. You can now log in.' });
+});
+
+// --- Verify OTP (just validate, don't login or reset) --------------------
+
+router.post('/forgot-password/verify', (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) {
+    return res.status(400).json({ error: 'Email and OTP are required.' });
+  }
+
+  if (!users.verifyOtp(email, otp)) {
+    return res.status(400).json({ error: 'Invalid or expired OTP. Please try again.' });
+  }
+
+  res.json({ ok: true, message: 'OTP verified successfully.' });
+});
+
+// --- Verify OTP & Login directly (without password reset) ------------------
+
+router.post('/verify-otp-login', (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) {
+    return res.status(400).json({ error: 'Email and OTP are required.' });
+  }
+
+  if (!users.verifyOtp(email, otp)) {
+    return res.status(400).json({ error: 'Invalid or expired OTP. Please try again.' });
+  }
+
+  const user = users.findByEmail(email);
+  if (!user) {
+    return res.status(404).json({ error: 'Account not found.' });
+  }
+
+  // Clear the OTP after successful verification
+  users.clearOtp(email);
+
+  req.login(user, (err) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Failed to establish session.' });
+    }
+    res.json({ ok: true, message: 'Logged in successfully.', user: { id: user.id, username: user.username } });
+  });
 });
 
 // --- Profile Update --------------------------------------------------------

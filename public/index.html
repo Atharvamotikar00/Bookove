@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="css/style.css" />
+<script>if(localStorage.getItem('bookove-theme')==='dark'||(!localStorage.getItem('bookove-theme')&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')</script>
 </head>
 <body>
 
@@ -37,7 +38,7 @@
   </div>
 
   <nav class="site-nav" id="site-nav">
-    <!-- auth-nav.js will populate this -->
+    <a href="upload.html">Upload</a>
   </nav>
 </header>
 
@@ -47,14 +48,23 @@
 
 <!-- Bottom navigation (mobile) -->
 <nav class="bottom-nav">
+  <a href="index.html" class="bottom-nav-item active">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Shelf
+  </a>
   <a href="upload.html" class="bottom-nav-item">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     Upload
   </a>
+  <button class="bottom-nav-item" id="mobile-theme-toggle" style="background:none;border:none;cursor:pointer;">
+    <svg id="mobile-theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    Theme
+  </button>
 </nav>
 
 <script src="js/profile-card.js"></script>
 <script src="js/auth-nav.js"></script>
+<script src="js/theme-toggle.js"></script>
 <script src="js/app.js"></script>
 <script src="js/audio-helper.js"></script>
 </body>

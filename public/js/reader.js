@@ -97,6 +97,13 @@ async function init() {
 }
 
 // ---------------- PDF ----------------
+function getPdfScale() {
+  const isMobile = window.innerWidth <= 640;
+  const maxWidth = isMobile ? window.innerWidth - 48 : 800;
+  const baseViewport = 612; // standard PDF width at scale 1
+  return Math.min(maxWidth / baseViewport, 1.6);
+}
+
 async function renderPdf(fileUrl) {
   const view = document.getElementById('pdf-view');
   const footer = document.getElementById('pdf-footer');
@@ -119,11 +126,14 @@ async function renderPdf(fileUrl) {
   async function renderPage(num) {
     view.innerHTML = '';
     const page = await pdf.getPage(num);
-    const viewport = page.getViewport({ scale: 1.4 });
+    const scale = getPdfScale();
+    const viewport = page.getViewport({ scale });
     const canvas = document.createElement('canvas');
     canvas.className = 'pdf-page-canvas';
     canvas.width = viewport.width;
     canvas.height = viewport.height;
+    canvas.style.maxWidth = '100%';
+    canvas.style.height = 'auto';
     view.appendChild(canvas);
     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
 
@@ -133,23 +143,32 @@ async function renderPdf(fileUrl) {
     saveProgress(String(num));
   }
 
-  document.getElementById('pdf-prev').addEventListener('click', () => {
-    if (currentPage > 1) renderPage(currentPage - 1);
-  });
-  document.getElementById('pdf-next').addEventListener('click', () => {
-    if (currentPage < pdf.numPages) renderPage(currentPage + 1);
-  });
+  function goPrev() { if (currentPage > 1) renderPage(currentPage - 1); }
+  function goNext() { if (currentPage < pdf.numPages) renderPage(currentPage + 1); }
+
+  document.getElementById('pdf-prev').addEventListener('click', goPrev);
+  document.getElementById('pdf-next').addEventListener('click', goNext);
   slider.addEventListener('input', () => renderPage(parseInt(slider.value, 10)));
 
-  // Arrow key navigation for PDF
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-      if (currentPage > 1) renderPage(currentPage - 1);
-    }
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-      if (currentPage < pdf.numPages) renderPage(currentPage + 1);
-    }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') goPrev();
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goNext();
   });
+
+  // Touch swipe for PDF
+  let touchStartX = 0;
+  let touchStartY = 0;
+  view.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
+  }, { passive: true });
+  view.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].screenX - touchStartX;
+    const dy = e.changedTouches[0].screenY - touchStartY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+      if (dx < 0) goNext(); else goPrev();
+    }
+  }, { passive: true });
 
   renderPage(currentPage);
 }
@@ -159,8 +178,13 @@ async function renderEpub(fileUrl) {
   const view = document.getElementById('epub-view');
   view.style.display = 'block';
 
+  const isMobile = window.innerWidth <= 640;
   const book = ePub(fileUrl);
-  const rendition = book.renderTo(view, { width: '100%', height: '100%' });
+  const rendition = book.renderTo(view, {
+    width: '100%',
+    height: '100%',
+    spread: isMobile ? 'none' : 'auto'
+  });
 
   const savedLocation = await getSavedProgress();
   await rendition.display(savedLocation || undefined);
@@ -183,6 +207,21 @@ async function renderEpub(fileUrl) {
     if (e.key === 'ArrowLeft') rendition.prev();
     if (e.key === 'ArrowRight') rendition.next();
   });
+
+  // Touch swipe for EPUB
+  let touchStartX = 0;
+  let touchStartY = 0;
+  view.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
+  }, { passive: true });
+  view.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].screenX - touchStartX;
+    const dy = e.changedTouches[0].screenY - touchStartY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+      if (dx < 0) rendition.next(); else rendition.prev();
+    }
+  }, { passive: true });
 }
 
 // ---------------- TXT ----------------

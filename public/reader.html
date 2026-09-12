@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="css/style.css" />
+<script>if(localStorage.getItem('bookove-theme')==='dark'||(!localStorage.getItem('bookove-theme')&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
@@ -56,6 +57,7 @@
   </div>
 </div>
 
+<script src="js/theme-toggle.js"></script>
 <script src="js/profile-card.js"></script>
 <script src="js/reader.js"></script>
 <script src="js/audio-helper.js"></script>

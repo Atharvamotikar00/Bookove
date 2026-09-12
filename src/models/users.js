@@ -99,6 +99,13 @@ function setOtp(email, otp, expiresAt) {
   return true;
 }
 
+function clearOtp(email) {
+  db.prepare(`UPDATE users SET otp = NULL, otp_expires_at = NULL WHERE email = ?`).run(
+    email.trim().toLowerCase()
+  );
+  return true;
+}
+
 function verifyOtp(email, otp) {
   const user = findByEmail(email);
   if (!user || !user.otp || !user.otp_expires_at) return false;
@@ -193,6 +200,7 @@ module.exports = {
   updatePassword,
   verifyPassword,
   setOtp,
+  clearOtp,
   verifyOtp,
   follow,
   unfollow,

@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="css/style.css" />
+<script>if(localStorage.getItem('bookove-theme')==='dark'||(!localStorage.getItem('bookove-theme')&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')</script>
 </head>
 <body>
 
@@ -62,7 +63,7 @@
     <!-- Forgot Password (OTP Request) Section -->
     <div id="forgot-section" style="display: none;">
       <p style="font-size: 13px; color: var(--ink-soft); margin-top: -15px; margin-bottom: 20px; line-height: 1.5;">
-        Enter your recovery email address below. We'll generate an OTP (One-Time Password) to reset your password.
+        Enter the email address you used to register. We'll send you a 6-digit code to reset your password.
       </p>
       <form id="forgot-form">
         <div class="field">
@@ -78,30 +79,48 @@
       </div>
     </div>
 
-    <!-- Reset Password Section -->
+    <!-- OTP Verification Section -->
     <div id="reset-section" style="display: none;">
       <p style="font-size: 13px; color: var(--ink-soft); margin-top: -15px; margin-bottom: 20px; line-height: 1.5;">
-        An OTP has been sent. Please enter the OTP code along with your new password below.
+        A 6-digit code has been sent to your email. Check your inbox (and spam folder).
       </p>
-      
-      <!-- Mock Toast OTP Display (for easy local testing) -->
-      <div id="debug-otp-alert" class="checkbox-row" style="background: #FFF8E7; border-color: #E2C080; display: none; margin-bottom: 16px;">
-        <span>🔑 <strong>Testing OTP:</strong> <code id="debug-otp-value" style="font-size: 14px; font-weight: 800; color: var(--danger);"></code></span>
-      </div>
 
-      <form id="reset-form">
+      <!-- Step 1: Enter OTP -->
+      <div id="otp-step">
         <div class="field">
           <label for="reset-otp">OTP Code</label>
           <input type="text" id="reset-otp" name="otp" required placeholder="6-digit code" maxlength="6" style="letter-spacing: 0.2em; text-align: center; font-weight: 700;" />
         </div>
 
-        <div class="field">
-          <label for="reset-new-password">New Password</label>
-          <input type="password" id="reset-new-password" name="newPassword" required placeholder="••••••••" />
+        <button type="button" id="verify-otp-btn" class="btn btn-brass" style="width: 100%; margin-top: 15px; text-shadow: none;">Verify Code</button>
+      </div>
+
+      <!-- Step 2: Choose action after OTP verified -->
+      <div id="otp-verified-step" style="display: none;">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <div style="font-size: 28px; margin-bottom: 8px;">✅</div>
+          <p style="font-size: 14px; color: var(--success); font-weight: 700; margin: 0;">Code verified!</p>
+          <p style="font-size: 12px; color: var(--ink-muted); margin: 4px 0 0;">What would you like to do?</p>
         </div>
 
-        <button type="submit" class="btn btn-brass" style="width: 100%; margin-top: 15px; text-shadow: none;">Reset Password</button>
-      </form>
+        <button type="button" id="otp-login-btn" class="btn btn-brass" style="width: 100%; margin-bottom: 10px; text-shadow: none;">Login Now</button>
+
+        <div style="text-align: center; margin: 12px 0; font-size: 12px; color: var(--ink-muted); font-weight: 600;">or</div>
+
+        <button type="button" id="show-reset-password-btn" class="btn btn-ghost" style="width: 100%; text-shadow: none;">Reset Password Instead</button>
+      </div>
+
+      <!-- Step 3: Reset password form -->
+      <div id="reset-password-step" style="display: none;">
+        <form id="reset-form">
+          <div class="field">
+            <label for="reset-new-password">New Password</label>
+            <input type="password" id="reset-new-password" name="newPassword" required placeholder="••••••••" />
+          </div>
+
+          <button type="submit" class="btn btn-brass" style="width: 100%; margin-top: 15px; text-shadow: none;">Reset Password</button>
+        </form>
+      </div>
 
       <div style="text-align: center; margin-top: 20px;">
         <button id="reset-back-to-login-btn" class="btn-link" style="background: none; border: none; color: var(--ink-soft); font-family: var(--font-body); font-size: 13px; text-decoration: underline; cursor: pointer;">Cancel</button>
@@ -114,6 +133,7 @@
 
 <script src="js/profile-card.js"></script>
 <script src="js/auth-nav.js"></script>
+<script src="js/theme-toggle.js"></script>
 <script src="js/auth-buttons.js"></script>
 <script src="js/audio-helper.js"></script>
 </body>

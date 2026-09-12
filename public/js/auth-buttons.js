@@ -95,6 +95,20 @@
 
   let recoveryEmail = '';
 
+  // Step elements
+  const otpStep = document.getElementById('otp-step');
+  const otpVerifiedStep = document.getElementById('otp-verified-step');
+  const resetPasswordStep = document.getElementById('reset-password-step');
+  const verifyOtpBtn = document.getElementById('verify-otp-btn');
+  const otpLoginBtn = document.getElementById('otp-login-btn');
+  const showResetPasswordBtn = document.getElementById('show-reset-password-btn');
+
+  function resetOtpSteps() {
+    if (otpStep) otpStep.style.display = 'block';
+    if (otpVerifiedStep) otpVerifiedStep.style.display = 'none';
+    if (resetPasswordStep) resetPasswordStep.style.display = 'none';
+  }
+
   if (forgotBtn && loginSection && forgotSection) {
     forgotBtn.addEventListener('click', () => {
       playClick();
@@ -119,6 +133,7 @@
       clearMsgs();
       resetSection.style.display = 'none';
       loginSection.style.display = 'block';
+      resetOtpSteps();
     });
   }
 
@@ -171,42 +186,102 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Recovery lookup failed.');
 
-        showSuccess('OTP generated!');
+        showSuccess('OTP sent! Check your email inbox.');
         
-        // Show reset password section
+        // Show OTP verification section (Step 1)
         forgotSection.style.display = 'none';
         resetSection.style.display = 'block';
-
-        // Display test OTP banner for development convenience
-        if (data.debugOtp) {
-          const debugOtpAlert = document.getElementById('debug-otp-alert');
-          const debugOtpVal = document.getElementById('debug-otp-value');
-          if (debugOtpAlert && debugOtpVal) {
-            debugOtpVal.textContent = data.debugOtp;
-            debugOtpAlert.style.display = 'flex';
-          }
-        }
+        resetOtpSteps();
       } catch (err) {
         showError(err.message);
       }
     });
   }
 
-  // Submit Reset Password (Verify OTP)
+  // Step 1: Verify OTP code
+  let verifiedOtp = '';
+  if (verifyOtpBtn) {
+    verifyOtpBtn.addEventListener('click', async () => {
+      clearMsgs();
+      playClick();
+
+      const otp = document.getElementById('reset-otp').value;
+      if (!otp || otp.length !== 6) {
+        showError('Please enter the 6-digit code.');
+        return;
+      }
+
+      try {
+        const res = await fetch('/auth/forgot-password/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: recoveryEmail, otp })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Verification failed.');
+
+        verifiedOtp = otp;
+        window.AccessibilityAudio?.play('success');
+
+        // Show the two options: Login Now or Reset Password
+        otpStep.style.display = 'none';
+        otpVerifiedStep.style.display = 'block';
+      } catch (err) {
+        showError(err.message);
+      }
+    });
+  }
+
+  // Step 2a: Login directly with verified OTP
+  if (otpLoginBtn) {
+    otpLoginBtn.addEventListener('click', async () => {
+      clearMsgs();
+      playClick();
+
+      try {
+        const res = await fetch('/auth/verify-otp-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: recoveryEmail, otp: verifiedOtp })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Login failed.');
+
+        window.AccessibilityAudio?.play('success');
+        showSuccess('Logged in successfully!');
+        setTimeout(() => {
+          window.location.href = 'index.html';
+        }, 800);
+      } catch (err) {
+        showError(err.message);
+      }
+    });
+  }
+
+  // Step 2b: Show reset password form
+  if (showResetPasswordBtn) {
+    showResetPasswordBtn.addEventListener('click', () => {
+      playClick();
+      clearMsgs();
+      otpVerifiedStep.style.display = 'none';
+      resetPasswordStep.style.display = 'block';
+    });
+  }
+
+  // Step 3: Submit new password
   if (resetForm) {
     resetForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       clearMsgs();
       playClick();
 
-      const otp = document.getElementById('reset-otp').value;
       const newPassword = document.getElementById('reset-new-password').value;
 
       try {
         const res = await fetch('/auth/reset-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: recoveryEmail, otp, newPassword })
+          body: JSON.stringify({ email: recoveryEmail, otp: verifiedOtp, newPassword })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to reset password.');
@@ -216,6 +291,7 @@
         // Return to login section
         resetSection.style.display = 'none';
         loginSection.style.display = 'block';
+        resetOtpSteps();
         
         // Clear forms
         resetForm.reset();
