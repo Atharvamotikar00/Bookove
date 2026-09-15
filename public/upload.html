@@ -56,6 +56,35 @@
       <textarea id="description" name="description" placeholder="A short note about the book…"></textarea>
     </div>
 
+    <div class="field">
+      <label>Genres <span class="hint" style="display:inline">(select one or more)</span></label>
+      <div class="genre-chips" id="genre-chips">
+        <button type="button" class="genre-chip" data-genre="kids">Kids</button>
+        <button type="button" class="genre-chip" data-genre="educational">Educational</button>
+        <button type="button" class="genre-chip" data-genre="devotional">Devotional</button>
+        <button type="button" class="genre-chip" data-genre="conspiracy">Conspiracy</button>
+        <button type="button" class="genre-chip" data-genre="sci-fi">Sci-Fi</button>
+        <button type="button" class="genre-chip" data-genre="novel">Novel</button>
+        <button type="button" class="genre-chip" data-genre="self-help">Self-Help</button>
+        <button type="button" class="genre-chip" data-genre="fantasy">Fantasy</button>
+        <button type="button" class="genre-chip" data-genre="horror">Horror</button>
+        <button type="button" class="genre-chip" data-genre="romance">Romance</button>
+        <button type="button" class="genre-chip" data-genre="mystery">Mystery</button>
+        <button type="button" class="genre-chip" data-genre="biography">Biography</button>
+        <button type="button" class="genre-chip" data-genre="history">History</button>
+        <button type="button" class="genre-chip" data-genre="philosophy">Philosophy</button>
+        <button type="button" class="genre-chip" data-genre="technology">Technology</button>
+        <button type="button" class="genre-chip" data-genre="comics">Comics</button>
+        <button type="button" class="genre-chip" data-genre="poetry">Poetry</button>
+        <button type="button" class="genre-chip" data-genre="other">Other</button>
+      </div>
+      <div class="field" style="margin-top:8px;">
+        <input type="text" id="custom-genre" placeholder="Add a custom genre…" style="width:100%;padding:8px 12px;border:2px solid var(--ink);border-radius:8px;background:var(--surface);color:var(--ink);font-size:14px;box-sizing:border-box;" />
+        <button type="button" id="add-custom-genre" class="btn" style="margin-top:6px;font-size:13px;padding:6px 14px;">+ Add Custom</button>
+      </div>
+      <input type="hidden" id="selected-genres" name="genres" value="[]" />
+    </div>
+
     <label class="checkbox-row">
       <input type="checkbox" id="isPublicDomain" name="isPublicDomain" />
       <span><strong>This book is in the public domain</strong> — its copyright has expired or it was never copyrighted.</span>

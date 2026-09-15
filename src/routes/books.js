@@ -24,9 +24,61 @@ const CONTENT_TYPES = {
   mobi: 'application/x-mobipocket-ebook',
 };
 
-// --- List books (with optional search & format filter) --------------------
+// --- List books (with optional search, format, genre, trending filter) -----
 router.get('/', (req, res) => {
-  const { q, format } = req.query;
+  const { q, format, genre, sort } = req.query;
+
+  // Trending sort: join reading_progress to count reads per book
+  if (sort === 'trending') {
+    let sql = `
+      SELECT b.*, COUNT(rp.id) as read_count
+      FROM books b
+      LEFT JOIN reading_progress rp ON rp.book_id = b.id
+      WHERE b.status = 'visible'`;
+    const params = [];
+
+    if (q) {
+      sql += ` AND (b.title LIKE ? OR b.author LIKE ?)`;
+      params.push(`%${q}%`, `%${q}%`);
+    }
+    if (format) {
+      sql += ` AND b.format = ?`;
+      params.push(format);
+    }
+    if (genre) {
+      sql += ` AND b.genres LIKE ?`;
+      params.push(`%"${genre}"%`);
+    }
+
+    sql += ` GROUP BY b.id ORDER BY read_count DESC, b.created_at DESC`;
+    return res.json(db.prepare(sql).all(...params));
+  }
+
+  if (sort === 'hidden-gems') {
+    let sql = `
+      SELECT b.*, COUNT(rp.id) as read_count
+      FROM books b
+      LEFT JOIN reading_progress rp ON rp.book_id = b.id
+      WHERE b.status = 'visible'`;
+    const params = [];
+
+    if (q) {
+      sql += ` AND (b.title LIKE ? OR b.author LIKE ?)`;
+      params.push(`%${q}%`, `%${q}%`);
+    }
+    if (format) {
+      sql += ` AND b.format = ?`;
+      params.push(format);
+    }
+    if (genre) {
+      sql += ` AND b.genres LIKE ?`;
+      params.push(`%"${genre}"%`);
+    }
+
+    sql += ` GROUP BY b.id ORDER BY read_count ASC, b.created_at DESC`;
+    return res.json(db.prepare(sql).all(...params));
+  }
+
   let sql = `SELECT * FROM books WHERE status = 'visible'`;
   const params = [];
 
@@ -38,17 +90,14 @@ router.get('/', (req, res) => {
     sql += ` AND format = ?`;
     params.push(format);
   }
+  if (genre) {
+    sql += ` AND genres LIKE ?`;
+    params.push(`%"${genre}"%`);
+  }
 
   sql += ` ORDER BY created_at DESC`;
   const rows = db.prepare(sql).all(...params);
   res.json(rows);
-});
-
-// --- Get single book ------------------------------------------------------
-router.get('/:id', (req, res) => {
-  const book = db.prepare(`SELECT * FROM books WHERE id = ?`).get(req.params.id);
-  if (!book) return res.status(404).json({ error: 'Book not found.' });
-  res.json(book);
 });
 
 // --- Upload book ----------------------------------------------------------
@@ -57,7 +106,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     return res.status(401).json({ error: 'Please sign in to upload books.' });
   }
 
-  const { title, author, description, isPublicDomain, rightsAttested } = req.body;
+  const { title, author, description, isPublicDomain, rightsAttested, genres } = req.body;
 
   if (!req.file) {
     return res.status(400).json({ error: 'No file provided.' });
@@ -96,15 +145,27 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
   const user = req.user;
 
+  // Parse genres — accept JSON array or comma-separated string
+  let genresArr = [];
+  if (genres) {
+    try {
+      genresArr = typeof genres === 'string' ? JSON.parse(genres) : genres;
+      if (!Array.isArray(genresArr)) genresArr = [];
+    } catch {
+      genresArr = genres.split(',').map(g => g.trim()).filter(Boolean);
+    }
+  }
+
   db.prepare(
-    `INSERT INTO books (id, title, author, description, format, original_filename, stored_filename, uploader_id, uploader_name, uploader_avatar, rights_attested, is_public_domain)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO books (id, title, author, description, format, genres, original_filename, stored_filename, uploader_id, uploader_name, uploader_avatar, rights_attested, is_public_domain)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     bookId,
     title.trim(),
     (author || 'Unknown').trim(),
     (description || '').trim(),
     finalFormat,
+    JSON.stringify(genresArr),
     req.file.originalname,
     storedFilename,
     user.id,
@@ -215,9 +276,211 @@ router.get('/:id/progress/:clientId', (req, res) => {
 // --- Books by a specific user ---------------------------------------------
 router.get('/by-user/:userId', (req, res) => {
   const rows = db.prepare(
-    `SELECT id, title, author, format, created_at FROM books WHERE uploader_id = ? AND status = 'visible' ORDER BY created_at DESC`
+    `SELECT id, title, author, format, genres, created_at FROM books WHERE uploader_id = ? AND status = 'visible' ORDER BY created_at DESC`
   ).all(req.params.userId);
   res.json(rows);
+});
+
+// --- Genre breakdown for a user -------------------------------------------
+router.get('/genre-stats/:userId', (req, res) => {
+  const rows = db.prepare(
+    `SELECT genres FROM books WHERE uploader_id = ? AND status = 'visible'`
+  ).all(req.params.userId);
+
+  const counts = {};
+  rows.forEach(row => {
+    try {
+      const arr = JSON.parse(row.genres || '[]');
+      if (Array.isArray(arr)) {
+        arr.forEach(g => {
+          const key = g.trim().toLowerCase();
+          if (key) counts[key] = (counts[key] || 0) + 1;
+        });
+      }
+    } catch {}
+  });
+
+  // Sort by count descending
+  const sorted = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([genre, count]) => ({ genre, count }));
+
+  res.json(sorted);
+});
+
+// --- Trending books (top N most-read) -------------------------------------
+router.get('/trending', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 10, 30);
+  const rows = db.prepare(`
+    SELECT b.id, b.title, b.author, b.format, b.genres,
+           COUNT(rp.id) as read_count
+    FROM books b
+    LEFT JOIN reading_progress rp ON rp.book_id = b.id
+    WHERE b.status = 'visible'
+    GROUP BY b.id
+    ORDER BY read_count DESC, b.created_at DESC
+    LIMIT ?
+  `).all(limit);
+  res.json(rows);
+});
+
+// --- Recommendations: books in genres the current user reads most ----------
+router.get('/recommended', (req, res) => {
+  const clientId = req.query.clientId;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 8, 20);
+
+  let topGenres = [];
+  if (req.user) {
+    topGenres = db.prepare(`
+      SELECT b.genres, COUNT(rp.id) as read_count
+      FROM reading_progress rp
+      JOIN books b ON b.id = rp.book_id
+      WHERE rp.client_id = ?
+      GROUP BY b.id
+      ORDER BY read_count DESC
+    `).all(clientId || req.user.id);
+  } else if (clientId) {
+    topGenres = db.prepare(`
+      SELECT b.genres, COUNT(rp.id) as read_count
+      FROM reading_progress rp
+      JOIN books b ON b.id = rp.book_id
+      WHERE rp.client_id = ?
+      GROUP BY b.id
+      ORDER BY read_count DESC
+    `).all(clientId);
+  }
+
+  const genreCounts = {};
+  topGenres.forEach(row => {
+    try {
+      const arr = JSON.parse(row.genres || '[]');
+      if (Array.isArray(arr)) {
+        arr.forEach(g => {
+          const key = g.trim().toLowerCase();
+          if (key) genreCounts[key] = (genreCounts[key] || 0) + 1;
+        });
+      }
+    } catch {}
+  });
+
+  const sortedGenres = Object.entries(genreCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([g]) => g);
+
+  if (!sortedGenres.length) {
+    const rows = db.prepare(`
+      SELECT * FROM books WHERE status = 'visible'
+      ORDER BY created_at DESC LIMIT ?
+    `).all(limit);
+    return res.json({ genres: [], books: rows });
+  }
+
+  const likeClauses = sortedGenres.map(() => `genres LIKE ?`).join(' OR ');
+  const likeParams = sortedGenres.map(g => `%"${g}"%`);
+
+  const rows = db.prepare(`
+    SELECT * FROM books
+    WHERE status = 'visible' AND (${likeClauses})
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(...likeParams, limit);
+
+  res.json({ genres: sortedGenres, books: rows });
+});
+
+// --- Highly rated books ---------------------------------------------------
+router.get('/highly-rated', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 10, 30);
+  const rows = db.prepare(`
+    SELECT b.*, ROUND(AVG(r.rating), 1) as avg_rating, COUNT(r.id) as total_ratings
+    FROM books b
+    JOIN ratings r ON r.book_id = b.id
+    WHERE b.status = 'visible'
+    GROUP BY b.id
+    HAVING total_ratings >= 1
+    ORDER BY avg_rating DESC, total_ratings DESC
+    LIMIT ?
+  `).all(limit);
+  res.json(rows);
+});
+
+// --- Rating: submit a rating (1-5 stars) ----------------------------------
+router.post('/:id/rate', (req, res) => {
+  const { rating, clientId } = req.body;
+  const bookId = req.params.id;
+
+  if (!rating || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: 'Rating must be between 1 and 5.' });
+  }
+
+  if (!clientId) {
+    return res.status(400).json({ error: 'Client ID is required.' });
+  }
+
+  const book = db.prepare(`SELECT id FROM books WHERE id = ?`).get(bookId);
+  if (!book) return res.status(404).json({ error: 'Book not found.' });
+
+  const ratingId = crypto.randomUUID();
+  db.prepare(`
+    INSERT INTO ratings (id, book_id, client_id, rating)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(book_id, client_id) DO UPDATE SET rating = excluded.rating, created_at = datetime('now')
+  `).run(ratingId, bookId, clientId, Math.round(rating));
+
+  // Return updated average
+  const stats = db.prepare(`
+    SELECT ROUND(AVG(rating), 1) as avg_rating, COUNT(*) as total
+    FROM ratings WHERE book_id = ?
+  `).get(bookId);
+
+  res.json({ ok: true, avgRating: stats.avg_rating || 0, totalRatings: stats.total });
+});
+
+// --- Rating: get average for a book ----------------------------------------
+router.get('/:id/rating', (req, res) => {
+  const bookId = req.params.id;
+  const stats = db.prepare(`
+    SELECT ROUND(AVG(rating), 1) as avg_rating, COUNT(*) as total
+    FROM ratings WHERE book_id = ?
+  `).get(bookId);
+
+  const userRating = req.query.clientId
+    ? db.prepare(`SELECT rating FROM ratings WHERE book_id = ? AND client_id = ?`).get(bookId, req.query.clientId)
+    : null;
+
+  res.json({
+    avgRating: stats.avg_rating || 0,
+    totalRatings: stats.total,
+    userRating: userRating ? userRating.rating : null
+  });
+});
+
+// --- Rating: get average for multiple books (for grid display) --------------
+router.post('/ratings-batch', (req, res) => {
+  const { bookIds, clientId } = req.body;
+  if (!Array.isArray(bookIds) || !bookIds.length) return res.json({});
+
+  const placeholders = bookIds.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT book_id, ROUND(AVG(rating), 1) as avg_rating, COUNT(*) as total
+    FROM ratings WHERE book_id IN (${placeholders})
+    GROUP BY book_id
+  `).all(...bookIds);
+
+  const result = {};
+  rows.forEach(r => {
+    result[r.book_id] = { avgRating: r.avg_rating, totalRatings: r.total };
+  });
+
+  res.json(result);
+});
+
+// --- Get single book (MUST be after all named routes) --------------------
+router.get('/:id', (req, res) => {
+  const book = db.prepare(`SELECT * FROM books WHERE id = ?`).get(req.params.id);
+  if (!book) return res.status(404).json({ error: 'Book not found.' });
+  res.json(book);
 });
 
 module.exports = router;

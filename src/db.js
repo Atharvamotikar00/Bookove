@@ -68,6 +68,7 @@ db.exec(`
     author TEXT DEFAULT 'Unknown',
     description TEXT DEFAULT '',
     format TEXT NOT NULL,          -- pdf | epub | txt | mobi
+    genres TEXT DEFAULT '[]',      -- JSON array of genre strings
     original_filename TEXT NOT NULL,
     stored_filename TEXT NOT NULL, -- the file actually served/read
     uploader_id TEXT,              -- references users.id; who posted this
@@ -99,7 +100,42 @@ db.exec(`
     UNIQUE(book_id, client_id),
     FOREIGN KEY (book_id) REFERENCES books(id)
   );
+
+  CREATE TABLE IF NOT EXISTS ratings (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(book_id, client_id),
+    FOREIGN KEY (book_id) REFERENCES books(id)
+  );
 `);
+
+// --- Add genres column to books if missing --------------------------------
+try {
+  const bookColumns = db.prepare("PRAGMA table_info(books)").all();
+  const hasGenres = bookColumns.some(c => c.name === 'genres');
+  if (!hasGenres) {
+    db.exec(`ALTER TABLE books ADD COLUMN genres TEXT DEFAULT '[]'`);
+    console.log('✅ Added genres column to books table');
+  }
+} catch (err) {
+  // safe to ignore
+}
+
+// --- Add ratings table if missing -----------------------------------------
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS ratings (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(book_id, client_id),
+    FOREIGN KEY (book_id) REFERENCES books(id)
+  )`);
+} catch (_) {}
 
 // --- Add google_id column if missing (for Google OAuth support) -----------
 try {

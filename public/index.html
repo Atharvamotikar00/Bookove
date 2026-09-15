@@ -35,6 +35,32 @@
       <option value="txt">TXT</option>
       <option value="mobi">MOBI</option>
     </select>
+    <select id="genre-filter" aria-label="Filter by genre">
+      <option value="">All Genres</option>
+      <option value="kids">Kids</option>
+      <option value="educational">Educational</option>
+      <option value="devotional">Devotional</option>
+      <option value="conspiracy">Conspiracy</option>
+      <option value="sci-fi">Sci-Fi</option>
+      <option value="novel">Novel</option>
+      <option value="self-help">Self-Help</option>
+      <option value="fantasy">Fantasy</option>
+      <option value="horror">Horror</option>
+      <option value="romance">Romance</option>
+      <option value="mystery">Mystery</option>
+      <option value="biography">Biography</option>
+      <option value="history">History</option>
+      <option value="philosophy">Philosophy</option>
+      <option value="technology">Technology</option>
+      <option value="comics">Comics</option>
+      <option value="poetry">Poetry</option>
+      <option value="other">Other</option>
+    </select>
+    <select id="sort-filter" aria-label="Sort books">
+      <option value="">Latest</option>
+      <option value="trending">🔥 Trending</option>
+      <option value="hidden-gems">💎 Hidden Gems</option>
+    </select>
   </div>
 
   <nav class="site-nav" id="site-nav">
@@ -42,8 +68,29 @@
   </nav>
 </header>
 
+<!-- Trending ribbon -->
+<div class="trending-ribbon" id="trending-ribbon">
+  <span class="trending-ribbon-label">🔥 TRENDING</span>
+  <div class="trending-ribbon-track" id="trending-track"></div>
+</div>
+
+<!-- Tab bar: Shelf / For You / Highly Rated -->
+<div class="shelf-tabs">
+  <button class="shelf-tab active" data-tab="shelf">📚 Shelf</button>
+  <button class="shelf-tab" data-tab="recommended">✨ For You</button>
+  <button class="shelf-tab" data-tab="highly-rated">⭐ Highly Rated</button>
+</div>
+
 <main class="book-grid" id="shelves">
   <p class="empty-state">Loading the shelf…</p>
+</main>
+
+<main class="book-grid" id="recommended-grid" style="display:none;">
+  <p class="empty-state">Loading recommendations…</p>
+</main>
+
+<main class="book-grid" id="highly-rated-grid" style="display:none;">
+  <p class="empty-state">Loading highly rated books…</p>
 </main>
 
 <!-- Bottom navigation (mobile) -->

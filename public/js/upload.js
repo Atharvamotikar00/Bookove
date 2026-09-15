@@ -49,6 +49,7 @@ form.addEventListener('submit', async (e) => {
   formData.append('description', document.getElementById('description').value);
   formData.append('isPublicDomain', isPublicDomain);
   formData.append('rightsAttested', rightsAttested);
+  formData.append('genres', document.getElementById('selected-genres').value);
 
   const submitBtn = form.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
@@ -73,3 +74,65 @@ form.addEventListener('submit', async (e) => {
     submitBtn.textContent = 'Add to shelf';
   }
 });
+
+// --- Genre chip toggle logic ---
+const selectedGenresInput = document.getElementById('selected-genres');
+let selectedGenres = [];
+
+function updateGenreInput() {
+  selectedGenresInput.value = JSON.stringify(selectedGenres);
+}
+
+function toggleGenre(genre) {
+  const idx = selectedGenres.indexOf(genre);
+  if (idx >= 0) {
+    selectedGenres.splice(idx, 1);
+  } else {
+    selectedGenres.push(genre);
+  }
+  // Update chip visuals
+  document.querySelectorAll('.genre-chip').forEach(chip => {
+    chip.classList.toggle('active', selectedGenres.includes(chip.dataset.genre));
+  });
+  updateGenreInput();
+}
+
+// Bind chip click handlers
+const chipsContainer = document.getElementById('genre-chips');
+if (chipsContainer) {
+  chipsContainer.addEventListener('click', (e) => {
+    const chip = e.target.closest('.genre-chip');
+    if (chip) toggleGenre(chip.dataset.genre);
+  });
+}
+
+// Custom genre add
+const addCustomBtn = document.getElementById('add-custom-genre');
+const customGenreInput = document.getElementById('custom-genre');
+if (addCustomBtn && customGenreInput) {
+  addCustomBtn.addEventListener('click', () => {
+    const val = customGenreInput.value.trim().toLowerCase();
+    if (!val) return;
+    if (selectedGenres.includes(val)) {
+      customGenreInput.value = '';
+      return;
+    }
+    // Add a new chip button to the container
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'genre-chip active';
+    chip.dataset.genre = val;
+    chip.textContent = val.charAt(0).toUpperCase() + val.slice(1);
+    chipsContainer.appendChild(chip);
+    selectedGenres.push(val);
+    updateGenreInput();
+    customGenreInput.value = '';
+  });
+  // Also allow Enter key
+  customGenreInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addCustomBtn.click();
+    }
+  });
+}

@@ -89,6 +89,12 @@
           </div>
         </div>
 
+        <!-- GENRE BREAKDOWN -->
+        <div class="profile-genre-section" id="profile-genre-section" style="display:none;">
+          <div class="profile-books-header">🎭 Genres Shared</div>
+          <div class="profile-genre-list" id="profile-genre-list"></div>
+        </div>
+
         <!-- SHARED BOOKS SECTION -->
         <div class="profile-books-section" id="profile-books-section">
           <div class="profile-books-header">📚 Shared Books</div>
@@ -199,8 +205,9 @@
       editForm.style.display = 'none';
       cardDetails.style.display = 'flex';
 
-      // Load user's shared books
+      // Load user's shared books and genre breakdown
       loadUserBooks(user.id);
+      loadUserGenreStats(user.id);
 
       modal.style.display = 'flex';
 
@@ -320,6 +327,34 @@
       `).join('');
     } catch {
       listEl.innerHTML = '<div class="profile-books-empty">Could not load books.</div>';
+    }
+  }
+
+  // --- Load genre breakdown for a user ---
+  async function loadUserGenreStats(userId) {
+    const sectionEl = document.getElementById('profile-genre-section');
+    const listEl = document.getElementById('profile-genre-list');
+    try {
+      const res = await fetch(`/api/books/genre-stats/${userId}`);
+      const stats = await res.json();
+      if (!stats.length) {
+        sectionEl.style.display = 'none';
+        return;
+      }
+      const total = stats.reduce((sum, s) => sum + s.count, 0);
+      listEl.innerHTML = stats.map(s => {
+        const pct = Math.round((s.count / total) * 100);
+        return `<div class="profile-genre-row">
+          <span class="profile-genre-name">${escapeHtml(s.genre)}</span>
+          <div class="profile-genre-bar-track">
+            <div class="profile-genre-bar-fill" style="width:${pct}%"></div>
+          </div>
+          <span class="profile-genre-count">${s.count} book${s.count > 1 ? 's' : ''}</span>
+        </div>`;
+      }).join('');
+      sectionEl.style.display = 'block';
+    } catch {
+      sectionEl.style.display = 'none';
     }
   }
 

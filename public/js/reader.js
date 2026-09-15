@@ -94,6 +94,9 @@ async function init() {
   else if (book.format === 'epub') renderEpub(fileUrl);
   else if (book.format === 'txt') renderTxt(fileUrl);
   else renderMobiFallback();
+
+  // Load rating
+  loadRating();
 }
 
 // ---------------- PDF ----------------
@@ -258,5 +261,50 @@ async function renderTxt(fileUrl) {
 function renderMobiFallback() {
   document.getElementById('mobi-fallback').style.display = 'block';
 }
+
+// ---------------- Rating ----------------
+async function loadRating() {
+  try {
+    const res = await fetch(`/api/books/${bookId}/rating?clientId=${encodeURIComponent(clientId)}`);
+    const data = await res.json();
+    updateRatingUI(data.avgRating, data.totalRatings, data.userRating);
+  } catch {}
+}
+
+function updateRatingUI(avg, total, userRating) {
+  const label = document.getElementById('rating-label');
+  if (total > 0) {
+    label.textContent = `${avg} (${total} rating${total > 1 ? 's' : ''})`;
+  } else {
+    label.textContent = 'No ratings yet';
+  }
+
+  // Highlight stars
+  document.querySelectorAll('.star-btn').forEach(btn => {
+    const star = parseInt(btn.dataset.star, 10);
+    if (userRating && star <= userRating) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+}
+
+document.querySelectorAll('.star-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const rating = parseInt(btn.dataset.star, 10);
+    try {
+      const res = await fetch(`/api/books/${bookId}/rate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating, clientId })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        updateRatingUI(data.avgRating, data.totalRatings, rating);
+      }
+    } catch {}
+  });
+});
 
 init();
