@@ -3,10 +3,10 @@ const express = require('express');
 const path = require('node:path');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
-const session = require('express-session');
+const cookieSession = require('cookie-session');
 const rateLimit = require('express-rate-limit');
 
-const SqliteSessionStore = require('./src/sessionStore');
+
 const passport = require('./src/auth/passport');
 const authRouter = require('./src/routes/auth');
 const booksRouter = require('./src/routes/books');
@@ -29,17 +29,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(
-  session({
-    store: new SqliteSessionStore(),
-    secret: process.env.SESSION_SECRET || require('node:crypto').randomBytes(32).toString('hex'),
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      maxAge: 1000 * 60 * 60 * 24 * 14, // 14 days
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production' && process.env.DISABLE_SECURE_COOKIE !== 'true',
-    },
+  cookieSession({
+    name: 'bookove_session',
+    keys: [process.env.SESSION_SECRET || require('node:crypto').randomBytes(32).toString('hex')],
+    maxAge: 1000 * 60 * 60 * 24 * 14, // 14 days
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production' && process.env.DISABLE_SECURE_COOKIE !== 'true',
   })
 );
 app.use(passport.initialize());
