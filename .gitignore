@@ -5,3 +5,5 @@ uploads/*
 .env
 *.log
 .vercel
+Bookove/
+.freebuff/
