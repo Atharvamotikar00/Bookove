@@ -69,6 +69,7 @@ db.exec(`
     description TEXT DEFAULT '',
     format TEXT NOT NULL,          -- pdf | epub | txt | mobi
     genres TEXT DEFAULT '[]',      -- JSON array of genre strings
+    language TEXT DEFAULT 'English', -- book language
     original_filename TEXT NOT NULL,
     stored_filename TEXT NOT NULL, -- the file actually served/read
     uploader_id TEXT,              -- references users.id; who posted this
@@ -111,6 +112,18 @@ db.exec(`
     FOREIGN KEY (book_id) REFERENCES books(id)
   );
 `);
+
+// --- Add language column to books if missing ------------------------------
+try {
+  const bookColumnsLang = db.prepare("PRAGMA table_info(books)").all();
+  const hasLang = bookColumnsLang.some(c => c.name === 'language');
+  if (!hasLang) {
+    db.exec(`ALTER TABLE books ADD COLUMN language TEXT DEFAULT 'English'`);
+    console.log('✅ Added language column to books table');
+  }
+} catch (err) {
+  // safe to ignore
+}
 
 // --- Add genres column to books if missing --------------------------------
 try {

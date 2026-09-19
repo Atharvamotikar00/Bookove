@@ -26,7 +26,7 @@ const CONTENT_TYPES = {
 
 // --- List books (with optional search, format, genre, trending filter) -----
 router.get('/', (req, res) => {
-  const { q, format, genre, sort } = req.query;
+  const { q, format, genre, language, sort } = req.query;
 
   // Trending sort: join reading_progress to count reads per book
   if (sort === 'trending') {
@@ -48,6 +48,10 @@ router.get('/', (req, res) => {
     if (genre) {
       sql += ` AND b.genres LIKE ?`;
       params.push(`%"${genre}"%`);
+    }
+    if (language) {
+      sql += ` AND b.language = ?`;
+      params.push(language);
     }
 
     sql += ` GROUP BY b.id ORDER BY read_count DESC, b.created_at DESC`;
@@ -74,6 +78,10 @@ router.get('/', (req, res) => {
       sql += ` AND b.genres LIKE ?`;
       params.push(`%"${genre}"%`);
     }
+    if (language) {
+      sql += ` AND b.language = ?`;
+      params.push(language);
+    }
 
     sql += ` GROUP BY b.id ORDER BY read_count ASC, b.created_at DESC`;
     return res.json(db.prepare(sql).all(...params));
@@ -94,6 +102,10 @@ router.get('/', (req, res) => {
     sql += ` AND genres LIKE ?`;
     params.push(`%"${genre}"%`);
   }
+  if (language) {
+    sql += ` AND language = ?`;
+    params.push(language);
+  }
 
   sql += ` ORDER BY created_at DESC`;
   const rows = db.prepare(sql).all(...params);
@@ -106,7 +118,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     return res.status(401).json({ error: 'Please sign in to upload books.' });
   }
 
-  const { title, author, description, isPublicDomain, rightsAttested, genres } = req.body;
+  const { title, author, description, isPublicDomain, rightsAttested, genres, language } = req.body;
 
   if (!req.file) {
     return res.status(400).json({ error: 'No file provided.' });
@@ -157,8 +169,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   }
 
   db.prepare(
-    `INSERT INTO books (id, title, author, description, format, genres, original_filename, stored_filename, uploader_id, uploader_name, uploader_avatar, rights_attested, is_public_domain)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO books (id, title, author, description, format, genres, language, original_filename, stored_filename, uploader_id, uploader_name, uploader_avatar, rights_attested, is_public_domain)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     bookId,
     title.trim(),
@@ -166,6 +178,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     (description || '').trim(),
     finalFormat,
     JSON.stringify(genresArr),
+    (language || 'English').trim(),
     req.file.originalname,
     storedFilename,
     user.id,

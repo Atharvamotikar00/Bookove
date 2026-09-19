@@ -50,6 +50,7 @@ form.addEventListener('submit', async (e) => {
   formData.append('isPublicDomain', isPublicDomain);
   formData.append('rightsAttested', rightsAttested);
   formData.append('genres', document.getElementById('selected-genres').value);
+  formData.append('language', document.getElementById('language').value);
 
   const submitBtn = form.querySelector('button[type="submit"]');
   submitBtn.disabled = true;

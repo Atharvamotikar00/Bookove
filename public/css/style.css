@@ -263,6 +263,11 @@ html.dark .theme-toggle-btn:hover {
   background: var(--ink);
   color: var(--accent-bright);
 }
+.theme-toggle-btn {
+  height: 40px !important;
+  width: 40px !important;
+  padding: 0 !important;
+}
 html.dark ::selection {
   background: var(--ink);
   color: var(--accent-bright);
@@ -288,9 +293,10 @@ a { color: inherit; }
    HEADER — search bar lives here now
    ============================================================ */
 .site-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 16px;
+  gap: 10px 16px;
   padding: 14px 32px;
   background: var(--surface);
   border-bottom: 4px solid var(--ink);
@@ -298,18 +304,19 @@ a { color: inherit; }
   position: sticky;
   top: 0;
   z-index: 50;
-  flex-wrap: wrap;
 }
+
 
 .wordmark {
   display: flex;
   align-items: center;
   text-decoration: none;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .logo-img {
-  height: 64px;
+  height: 56px;
   width: auto;
   object-fit: contain;
   transition: transform 0.2s ease;
@@ -317,31 +324,36 @@ a { color: inherit; }
 .logo-img:hover {
   transform: rotate(-3deg) scale(1.05);
 }
-
 html.dark .logo-img {
   filter: invert(1);
 }
 
 /* Search bar in header */
 .header-search {
+  grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  flex: 1;
-  max-width: 420px;
-  min-width: 200px;
+  width: 100%;
+}
+.header-search > select {
+  flex: 1 1 0;
+  min-width: 100px;
 }
 .header-search input[type="text"] {
   flex: 1;
   font-family: var(--font-body);
   font-size: 14px;
   font-weight: 600;
-  padding: 12px 16px;
+  padding: 0 16px;
+  height: 40px;
   border-radius: var(--radius);
   background: var(--surface-alt);
   border: 3px solid var(--ink);
   color: var(--ink);
   box-shadow: var(--shadow);
   transition: box-shadow 0.15s ease;
+  box-sizing: border-box;
 }
 .header-search input[type="text"]:focus {
   outline: none;
@@ -351,16 +363,18 @@ html.dark .logo-img {
   font-family: var(--font-body);
   font-size: 13px;
   font-weight: 700;
-  padding: 12px 14px;
+  padding: 0 14px;
+  height: 40px;
   border-radius: var(--radius);
   background: var(--surface-alt);
   border: 3px solid var(--ink);
   color: var(--ink);
   box-shadow: var(--shadow);
   cursor: pointer;
+  box-sizing: border-box;
 }
 
-.site-nav { display: flex; gap: 8px; align-items: center; flex-shrink: 0; margin-left: auto; }
+.site-nav { display: flex; gap: 8px; align-items: center; flex-shrink: 0; margin-left: auto; align-self: flex-end; }
 
 .site-nav a {
   text-decoration: none;
@@ -369,7 +383,10 @@ html.dark .logo-img {
   font-size: 14px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  padding: 10px 20px;
+  padding: 0 20px;
+  height: 40px;
+  display: flex;
+  align-items: center;
   border-radius: 8px;
   background: var(--surface);
   border: 2px solid var(--ink);
@@ -759,6 +776,16 @@ html.dark .logo-img {
 }
 
 /* ============================================================
+   MOBILE MENU (hidden on desktop)
+   ============================================================ */
+.mobile-menu-wrap {
+  display: none;
+}
+.mobile-profile-slot {
+  display: none;
+}
+
+/* ============================================================
    UPLOAD form
    ============================================================ */
 .upload-wrap {
@@ -987,27 +1014,164 @@ html.dark .logo-img {
 
 @media (max-width: 640px) {
   .site-header {
-    flex-wrap: wrap;
     padding: 10px 16px;
-    gap: 10px;
+    gap: 8px;
+    grid-template-columns: auto auto;
+    grid-template-rows: auto auto;
   }
-  .wordmark { width: 100%; }
-  .logo-img { height: 40px; }
+  .wordmark { grid-column: 1; grid-row: 1; }
+  .logo-img { height: 36px; }
+  .site-nav { margin-left: 0; grid-column: 1; grid-row: 1; display: none !important; }
+  .mobile-menu-wrap { grid-column: 2; grid-row: 1; }
   .header-search {
-    max-width: none;
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .header-search > select {
+    flex: 1 1 0;
     min-width: 0;
-    width: 100%;
-    order: 3;
+    font-size: 11px;
+    padding: 0 6px;
   }
   .header-search input[type="text"] {
-    padding: 10px 14px;
+    padding: 0 12px;
     font-size: 13px;
+    height: 38px;
+    flex: 1 1 100%;
   }
   .header-search select {
-    padding: 10px 12px;
-    font-size: 12px;
+    padding: 0 6px;
+    font-size: 11px;
+    height: 38px;
   }
-  .site-nav { display: none; }
+  .site-nav { display: none !important; }
+
+  /* Mobile menu */
+  .mobile-menu-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mobile-profile-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mobile-profile-img {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--ink);
+    cursor: pointer;
+  }
+  .mobile-profile-fallback {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--accent-bright);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 14px;
+    font-family: var(--font-body);
+    cursor: pointer;
+    border: 2px solid var(--ink);
+  }
+  .mobile-menu-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: var(--surface-alt);
+    border: 2px solid var(--ink);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+  }
+  .mobile-menu-btn:hover {
+    background: var(--ink);
+    color: var(--accent-bright);
+  }
+  /* + upload button on mobile navbar */
+  .mobile-upload-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: var(--surface-alt);
+    border: 2px solid var(--ink);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    text-decoration: none;
+    box-shadow: 2px 2px 0px #000;
+    transition: background 0.15s ease;
+  }
+  .mobile-upload-btn:hover {
+    background: var(--ink);
+    color: var(--accent-bright);
+  }
+  .mobile-upload-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: none;
+  }
+  /* Guest circle (not logged in) */
+  .mobile-profile-guest {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--surface-alt);
+    color: var(--ink-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--ink);
+    cursor: pointer;
+  }
+  .mobile-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 16px;
+    margin-top: 8px;
+    background: var(--surface);
+    border: 3px solid var(--ink);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    min-width: 180px;
+    z-index: 200;
+    overflow: hidden;
+  }
+  .mobile-dropdown.open {
+    display: block;
+  }
+  .mobile-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 16px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.1s ease;
+  }
+  .mobile-dropdown-item:hover {
+    background: var(--surface-alt);
+  }
+
   .book-grid { padding: 20px 16px 140px; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
   .bottom-nav { display: flex; }
   .book-card-title { font-size: 18px; }
@@ -1083,7 +1247,8 @@ html.dark .logo-img {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px 6px 6px;
+  padding: 0 14px 0 6px;
+  height: 40px;
   border-radius: 8px;
   background: var(--surface-alt);
   border: 2px solid var(--ink);
@@ -1124,6 +1289,11 @@ html.dark .logo-img {
   background: var(--surface);
   border: 2px solid var(--ink);
   border-radius: 8px;
+  padding: 0 16px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
   padding: 10px 16px;
   cursor: pointer;
   transition: all 0.15s ease;
