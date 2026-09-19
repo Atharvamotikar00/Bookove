@@ -1,0 +1,16 @@
+{
+  "outputDirectory": "public",
+  "functions": {
+    "api/[...slug].js": {
+      "maxDuration": 10
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    }
+  ]
+}
