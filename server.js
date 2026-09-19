@@ -72,6 +72,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong.' });
 });
 
-app.listen(PORT, () => {
-  console.log(`📚 Bookove running at http://localhost:${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`📚 Bookove running at http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
+
