@@ -8,6 +8,9 @@ const reportModal = document.getElementById('report-modal');
 const reportCancel = document.getElementById('report-cancel');
 const reportSubmit = document.getElementById('report-submit');
 const reportReason = document.getElementById('report-reason');
+const bookmarkBtn = document.getElementById('bookmark-btn');
+const bookmarksList = document.getElementById('bookmarks-list');
+const statsDisplay = document.getElementById('reading-stats');
 
 function getClientId() {
   let id = localStorage.getItem('bookgrove_client_id');
@@ -25,6 +28,104 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// Reading time tracker
+let readingStartTime = Date.now();
+let currentLocation = '';
+
+function formatTime(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
+async function saveReadingStats() {
+  const timeSpent = Math.floor((Date.now() - readingStartTime) / 1000);
+  if (timeSpent < 5) return; // Don't save very short sessions
+  
+  try {
+    await fetch(`/api/books/${bookId}/stats`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId, timeSpent, location: currentLocation }),
+    });
+  } catch {}
+  readingStartTime = Date.now(); // Reset timer after saving
+}
+
+async function loadReadingStats() {
+  try {
+    const res = await fetch(`/api/books/${bookId}/stats/${clientId}`);
+    const data = await res.json();
+    if (statsDisplay) {
+      const totalTime = data.totalTime || 0;
+      statsDisplay.textContent = totalTime > 0 ? `📖 ${formatTime(totalTime)} spent reading` : '';
+    }
+  } catch {}
+}
+
+// Save stats periodically and on page unload
+setInterval(saveReadingStats, 30000); // Every 30 seconds
+window.addEventListener('beforeunload', saveReadingStats);
+
+// Bookmark functions
+async function loadBookmarks() {
+  if (!bookmarksList) return;
+  try {
+    const res = await fetch(`/api/books/${bookId}/bookmarks/${clientId}`);
+    const bookmarks = await res.json();
+    
+    bookmarksList.innerHTML = bookmarks.length > 0 
+      ? bookmarks.map(b => `
+        <div class="bookmark-item">
+          <button class="bookmark-goto" data-location="${escapeHtml(b.location)}" title="Go to bookmark">
+            📌 ${escapeHtml(b.label) || 'Bookmark'}
+          </button>
+          <button class="bookmark-delete" data-id="${b.id}" title="Delete bookmark">×</button>
+        </div>
+      `).join('')
+      : '<div class="bookmarks-empty">No bookmarks yet</div>';
+    
+    // Add event listeners
+    bookmarksList.querySelectorAll('.bookmark-goto').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const location = btn.dataset.location;
+        goToBookmark(location);
+      });
+    });
+    
+    bookmarksList.querySelectorAll('.bookmark-delete').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await fetch(`/api/books/${bookId}/bookmarks/${btn.dataset.id}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId }),
+        });
+        loadBookmarks();
+      });
+    });
+  } catch {}
+}
+
+async function saveBookmark() {
+  const label = prompt('Bookmark name (optional):');
+  if (label === null) return; // User cancelled
+  
+  try {
+    await fetch(`/api/books/${bookId}/bookmark`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId, location: currentLocation, label }),
+    });
+    loadBookmarks();
+  } catch {}
+}
+
+function goToBookmark(location) {
+  // This will be implemented per format (PDF, EPUB, TXT)
+  if (window._goToBookmark) window._goToBookmark(location);
+}
+
 reportBtn.addEventListener('click', () => (reportModal.style.display = 'flex'));
 reportCancel.addEventListener('click', () => (reportModal.style.display = 'none'));
 reportSubmit.addEventListener('click', async () => {
@@ -38,7 +139,26 @@ reportSubmit.addEventListener('click', async () => {
   alert('Thanks — this has been reported for review.');
 });
 
+const bookmarksPanel = document.getElementById('bookmarks-panel');
+const bookmarksClose = document.getElementById('bookmarks-close');
+
+if (bookmarkBtn && bookmarksPanel) {
+  bookmarkBtn.addEventListener('click', () => {
+    bookmarksPanel.classList.toggle('open');
+    if (bookmarksPanel.classList.contains('open')) {
+      loadBookmarks();
+    }
+  });
+}
+
+if (bookmarksClose) {
+  bookmarksClose.addEventListener('click', () => {
+    bookmarksPanel.classList.remove('open');
+  });
+}
+
 async function saveProgress(location) {
+  currentLocation = location;
   fetch(`/api/books/${bookId}/progress/${clientId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -97,6 +217,10 @@ async function init() {
 
   // Load rating
   loadRating();
+  
+  // Load bookmarks and stats
+  loadBookmarks();
+  loadReadingStats();
 }
 
 // ---------------- PDF ----------------
@@ -174,6 +298,14 @@ async function renderPdf(fileUrl) {
   }, { passive: true });
 
   renderPage(currentPage);
+  
+  // Bookmark navigation for PDF
+  window._goToBookmark = (location) => {
+    const pageNum = parseInt(location, 10);
+    if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= pdf.numPages) {
+      renderPage(pageNum);
+    }
+  };
 }
 
 // ---------------- EPUB ----------------
@@ -225,6 +357,11 @@ async function renderEpub(fileUrl) {
       if (dx < 0) rendition.next(); else rendition.prev();
     }
   }, { passive: true });
+  
+  // Bookmark navigation for EPUB
+  window._goToBookmark = (location) => {
+    rendition.display(location);
+  };
 }
 
 // ---------------- TXT ----------------
@@ -255,6 +392,14 @@ async function renderTxt(fileUrl) {
       window.scrollBy({ top: -window.innerHeight * 0.8, behavior: 'smooth' });
     }
   });
+  
+  // Bookmark navigation for TXT
+  window._goToBookmark = (location) => {
+    const scrollPos = parseInt(location, 10);
+    if (!isNaN(scrollPos)) {
+      window.scrollTo({ top: scrollPos, behavior: 'smooth' });
+    }
+  };
 }
 
 // ---------------- MOBI fallback ----------------

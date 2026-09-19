@@ -42,15 +42,11 @@
     }
   } catch {}
 
-  // Check if Google sign-in is configured and show the button
-  try {
-    const provRes = await fetch('/auth/providers');
-    const provData = await provRes.json();
-    const googleWrap = document.getElementById('google-signin-wrap');
-    if (googleWrap && provData.google) {
-      googleWrap.style.display = 'block';
-    }
-  } catch {}
+  // Show Google sign-in button (always visible, but only works if configured)
+  const googleWrap = document.getElementById('google-signin-wrap');
+  if (googleWrap) {
+    googleWrap.style.display = 'block';
+  }
 
   // --- REGISTRATION FORM HANDLER ---
   const regForm = document.getElementById('register-form');

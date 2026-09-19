@@ -286,6 +286,79 @@ router.get('/:id/progress/:clientId', (req, res) => {
   res.json({ location: row ? row.location : '' });
 });
 
+// --- Bookmark: save a bookmark --------------------------------------------
+router.post('/:id/bookmark', (req, res) => {
+  const { clientId, location, label } = req.body;
+  const bookId = req.params.id;
+
+  if (!clientId) {
+    return res.status(400).json({ error: 'Client ID is required.' });
+  }
+
+  const book = db.prepare(`SELECT id FROM books WHERE id = ?`).get(bookId);
+  if (!book) return res.status(404).json({ error: 'Book not found.' });
+
+  const bookmarkId = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO bookmarks (id, book_id, client_id, location, label)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(bookmarkId, bookId, clientId, location || '', label || '');
+
+  res.json({ ok: true, id: bookmarkId });
+});
+
+// --- Bookmark: get all bookmarks for a book --------------------------------
+router.get('/:id/bookmarks/:clientId', (req, res) => {
+  const rows = db.prepare(
+    `SELECT * FROM bookmarks WHERE book_id = ? AND client_id = ? ORDER BY created_at DESC`
+  ).all(req.params.id, req.params.clientId);
+  res.json(rows);
+});
+
+// --- Bookmark: delete a bookmark -------------------------------------------
+router.delete('/:id/bookmarks/:bookmarkId', (req, res) => {
+  const { clientId } = req.body;
+  db.prepare(`DELETE FROM bookmarks WHERE id = ? AND client_id = ?`).run(
+    req.params.bookmarkId,
+    clientId
+  );
+  res.json({ ok: true });
+});
+
+// --- Reading stats: save reading session -----------------------------------
+router.post('/:id/stats', (req, res) => {
+  const { clientId, timeSpent, location } = req.body;
+  const bookId = req.params.id;
+
+  if (!clientId) {
+    return res.status(400).json({ error: 'Client ID is required.' });
+  }
+
+  const book = db.prepare(`SELECT id FROM books WHERE id = ?`).get(bookId);
+  if (!book) return res.status(404).json({ error: 'Book not found.' });
+
+  const statsId = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO reading_stats (id, book_id, client_id, time_spent, location)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(statsId, bookId, clientId, timeSpent || 0, location || '');
+
+  res.json({ ok: true });
+});
+
+// --- Reading stats: get stats for a book -----------------------------------
+router.get('/:id/stats/:clientId', (req, res) => {
+  const row = db.prepare(
+    `SELECT SUM(time_spent) as total_time, location 
+     FROM reading_stats WHERE book_id = ? AND client_id = ?
+     GROUP BY client_id`
+  ).get(req.params.id, req.params.clientId);
+  res.json({
+    totalTime: row ? row.total_time : 0,
+    lastLocation: row ? row.location : ''
+  });
+});
+
 // --- Books by a specific user ---------------------------------------------
 router.get('/by-user/:userId', (req, res) => {
   const rows = db.prepare(

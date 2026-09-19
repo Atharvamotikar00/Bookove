@@ -111,6 +111,26 @@ db.exec(`
     UNIQUE(book_id, client_id),
     FOREIGN KEY (book_id) REFERENCES books(id)
   );
+
+  CREATE TABLE IF NOT EXISTS bookmarks (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    location TEXT NOT NULL DEFAULT '',
+    label TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (book_id) REFERENCES books(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS reading_stats (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    time_spent INTEGER NOT NULL DEFAULT 0,
+    location TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (book_id) REFERENCES books(id)
+  );
 `);
 
 // --- Add language column to books if missing ------------------------------
