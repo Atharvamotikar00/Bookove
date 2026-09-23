@@ -23,6 +23,7 @@
     </div>
   </div>
   <div class="reader-actions">
+    <span class="reading-stats" id="reading-stats"></span>
     <div class="reader-rating" id="reader-rating">
       <div class="star-rating" id="star-rating">
         <button class="star-btn" data-star="1">★</button>
@@ -33,9 +34,18 @@
       </div>
       <span class="rating-label" id="rating-label"></span>
     </div>
+    <button class="bookmark-btn" id="bookmark-btn">📌 Bookmark</button>
     <button id="report-btn">Report</button>
     <a id="download-link" href="#">Download</a>
   </div>
+</div>
+
+<div class="bookmarks-panel" id="bookmarks-panel">
+  <div class="bookmarks-header">
+    <span>📌 Bookmarks</span>
+    <button class="bookmarks-close" id="bookmarks-close">×</button>
+  </div>
+  <div class="bookmarks-list" id="bookmarks-list"></div>
 </div>
 
 <div class="reader-body" id="reader-body">

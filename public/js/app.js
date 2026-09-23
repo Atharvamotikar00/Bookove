@@ -4,6 +4,7 @@ const highlyRatedGrid = document.getElementById('highly-rated-grid');
 const searchInput = document.getElementById('search-input');
 const formatFilter = document.getElementById('format-filter');
 const genreFilter = document.getElementById('genre-filter');
+const languageFilter = document.getElementById('language-filter');
 const sortFilter = document.getElementById('sort-filter');
 const trendingTrack = document.getElementById('trending-track');
 
@@ -42,6 +43,7 @@ async function loadBooks() {
   if (searchInput.value.trim()) params.set('q', searchInput.value.trim());
   if (formatFilter.value) params.set('format', formatFilter.value);
   if (genreFilter && genreFilter.value) params.set('genre', genreFilter.value);
+  if (languageFilter && languageFilter.value) params.set('language', languageFilter.value);
   if (sortFilter && sortFilter.value) params.set('sort', sortFilter.value);
 
   shelvesEl.innerHTML = '<p class="empty-state">Loading the shelf…</p>';
@@ -332,6 +334,7 @@ searchInput.addEventListener('input', () => {
 });
 formatFilter.addEventListener('change', loadBooks);
 if (genreFilter) genreFilter.addEventListener('change', loadBooks);
+if (languageFilter) languageFilter.addEventListener('change', loadBooks);
 if (sortFilter) sortFilter.addEventListener('change', loadBooks);
 
 // --- Highly Rated books ---

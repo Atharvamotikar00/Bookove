@@ -4,3 +4,8 @@ uploads/*
 !uploads/.gitkeep
 .env
 *.log
+.vercel
+Bookove/
+.freebuff/
+
+.vercel

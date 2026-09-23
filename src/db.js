@@ -2,7 +2,7 @@ const { DatabaseSync } = require('node:sqlite');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const DATA_DIR = process.env.VERCEL ? '/tmp' : path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new DatabaseSync(path.join(DATA_DIR, 'library.db'));
@@ -69,6 +69,7 @@ db.exec(`
     description TEXT DEFAULT '',
     format TEXT NOT NULL,          -- pdf | epub | txt | mobi
     genres TEXT DEFAULT '[]',      -- JSON array of genre strings
+    language TEXT DEFAULT 'English', -- book language
     original_filename TEXT NOT NULL,
     stored_filename TEXT NOT NULL, -- the file actually served/read
     uploader_id TEXT,              -- references users.id; who posted this
@@ -110,7 +111,39 @@ db.exec(`
     UNIQUE(book_id, client_id),
     FOREIGN KEY (book_id) REFERENCES books(id)
   );
+
+  CREATE TABLE IF NOT EXISTS bookmarks (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    location TEXT NOT NULL DEFAULT '',
+    label TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (book_id) REFERENCES books(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS reading_stats (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    time_spent INTEGER NOT NULL DEFAULT 0,
+    location TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (book_id) REFERENCES books(id)
+  );
 `);
+
+// --- Add language column to books if missing ------------------------------
+try {
+  const bookColumnsLang = db.prepare("PRAGMA table_info(books)").all();
+  const hasLang = bookColumnsLang.some(c => c.name === 'language');
+  if (!hasLang) {
+    db.exec(`ALTER TABLE books ADD COLUMN language TEXT DEFAULT 'English'`);
+    console.log('✅ Added language column to books table');
+  }
+} catch (err) {
+  // safe to ignore
+}
 
 // --- Add genres column to books if missing --------------------------------
 try {

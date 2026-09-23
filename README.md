@@ -83,6 +83,48 @@ The server listens on the port defined by `PORT` in your `.env` file.
 
 ---
 
+## 🌐 Deploy to Vercel
+
+### Prerequisites
+- A [Vercel account](https://vercel.com/signup)
+- [Vercel CLI](https://vercel.com/docs/cli) installed (`npm i -g vercel`)
+
+### Steps
+
+1. **Push your code to GitHub**
+   ```bash
+   git add .
+   git commit -m "Prepare for Vercel deployment"
+   git push origin main
+   ```
+
+2. **Import project on Vercel**
+   - Go to [vercel.com/new](https://vercel.com/new)
+   - Import your GitHub repository
+   - Vercel will auto-detect the Node.js project
+
+3. **Configure environment variables**
+   In the Vercel dashboard, add these environment variables:
+   | Variable | Value |
+   |---|---|
+   | `SESSION_SECRET` | A long random string |
+   | `ADMIN_KEY` | A long random string (for admin panel) |
+   | `GOOGLE_CLIENT_ID` | (Optional) Your Google OAuth client ID |
+   | `GOOGLE_CLIENT_SECRET` | (Optional) Your Google OAuth client secret |
+   | `GOOGLE_CALLBACK_URL` | `https://your-app.vercel.app/auth/google/callback` |
+   | `RESEND_API_KEY` | (Optional) Your Resend API key for email OTPs |
+   | `RESEND_FROM` | (Optional) e.g. `Bookove <noreply@yourdomain.com>` |
+
+4. **Deploy**
+   ```bash
+   vercel --prod
+   ```
+   Or click **Deploy** in the Vercel dashboard.
+
+> ⚠️ **Note**: Vercel uses serverless functions, so the SQLite database and uploaded files are ephemeral (reset between cold starts). For production, consider migrating to a managed database like [Turso](https://turso.tech/) or [PlanetScale](https://planetscale.com/), and using cloud storage (e.g., S3, Cloudinary) for file uploads.
+
+---
+
 ## 🤝 Contributing
 
 Contributions, bug reports, and feature requests are welcome. Feel free to open an issue or submit a pull request.

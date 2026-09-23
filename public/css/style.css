@@ -263,6 +263,11 @@ html.dark .theme-toggle-btn:hover {
   background: var(--ink);
   color: var(--accent-bright);
 }
+.theme-toggle-btn {
+  height: 40px !important;
+  width: 40px !important;
+  padding: 0 !important;
+}
 html.dark ::selection {
   background: var(--ink);
   color: var(--accent-bright);
@@ -288,9 +293,10 @@ a { color: inherit; }
    HEADER — search bar lives here now
    ============================================================ */
 .site-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 16px;
+  gap: 10px 16px;
   padding: 14px 32px;
   background: var(--surface);
   border-bottom: 4px solid var(--ink);
@@ -298,50 +304,58 @@ a { color: inherit; }
   position: sticky;
   top: 0;
   z-index: 50;
-  flex-wrap: wrap;
 }
+
 
 .wordmark {
   display: flex;
   align-items: center;
   text-decoration: none;
   flex-shrink: 0;
+  overflow: visible;
+  padding: 4px;
 }
 
 .logo-img {
-  height: 64px;
+  height: 56px;
   width: auto;
   object-fit: contain;
-  transition: transform 0.2s ease;
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transform-origin: center center;
 }
 .logo-img:hover {
-  transform: rotate(-3deg) scale(1.05);
+  transform: rotate(-5deg) scale(1.08);
 }
-
 html.dark .logo-img {
   filter: invert(1);
 }
 
 /* Search bar in header */
 .header-search {
+  grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  flex: 1;
-  max-width: 420px;
-  min-width: 200px;
+  width: 100%;
+}
+.header-search > select {
+  flex: 1 1 0;
+  min-width: 100px;
 }
 .header-search input[type="text"] {
   flex: 1;
   font-family: var(--font-body);
   font-size: 14px;
   font-weight: 600;
-  padding: 12px 16px;
+  padding: 0 16px;
+  height: 40px;
   border-radius: var(--radius);
   background: var(--surface-alt);
   border: 3px solid var(--ink);
   color: var(--ink);
   box-shadow: var(--shadow);
   transition: box-shadow 0.15s ease;
+  box-sizing: border-box;
 }
 .header-search input[type="text"]:focus {
   outline: none;
@@ -351,16 +365,18 @@ html.dark .logo-img {
   font-family: var(--font-body);
   font-size: 13px;
   font-weight: 700;
-  padding: 12px 14px;
+  padding: 0 14px;
+  height: 40px;
   border-radius: var(--radius);
   background: var(--surface-alt);
   border: 3px solid var(--ink);
   color: var(--ink);
   box-shadow: var(--shadow);
   cursor: pointer;
+  box-sizing: border-box;
 }
 
-.site-nav { display: flex; gap: 8px; align-items: center; flex-shrink: 0; margin-left: auto; }
+.site-nav { display: flex; gap: 8px; align-items: center; flex-shrink: 0; margin-left: auto; align-self: flex-end; }
 
 .site-nav a {
   text-decoration: none;
@@ -369,7 +385,10 @@ html.dark .logo-img {
   font-size: 14px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  padding: 10px 20px;
+  padding: 0 20px;
+  height: 40px;
+  display: flex;
+  align-items: center;
   border-radius: 8px;
   background: var(--surface);
   border: 2px solid var(--ink);
@@ -759,6 +778,16 @@ html.dark .logo-img {
 }
 
 /* ============================================================
+   MOBILE MENU (hidden on desktop)
+   ============================================================ */
+.mobile-menu-wrap {
+  display: none;
+}
+.mobile-profile-slot {
+  display: none;
+}
+
+/* ============================================================
    UPLOAD form
    ============================================================ */
 .upload-wrap {
@@ -987,27 +1016,164 @@ html.dark .logo-img {
 
 @media (max-width: 640px) {
   .site-header {
-    flex-wrap: wrap;
     padding: 10px 16px;
-    gap: 10px;
+    gap: 8px;
+    grid-template-columns: auto auto;
+    grid-template-rows: auto auto;
   }
-  .wordmark { width: 100%; }
-  .logo-img { height: 40px; }
+  .wordmark { grid-column: 1; grid-row: 1; }
+  .logo-img { height: 36px; }
+  .site-nav { margin-left: 0; grid-column: 1; grid-row: 1; display: none !important; }
+  .mobile-menu-wrap { grid-column: 2; grid-row: 1; }
   .header-search {
-    max-width: none;
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .header-search > select {
+    flex: 1 1 0;
     min-width: 0;
-    width: 100%;
-    order: 3;
+    font-size: 11px;
+    padding: 0 6px;
   }
   .header-search input[type="text"] {
-    padding: 10px 14px;
+    padding: 0 12px;
     font-size: 13px;
+    height: 38px;
+    flex: 1 1 100%;
   }
   .header-search select {
-    padding: 10px 12px;
-    font-size: 12px;
+    padding: 0 6px;
+    font-size: 11px;
+    height: 38px;
   }
-  .site-nav { display: none; }
+  .site-nav { display: none !important; }
+
+  /* Mobile menu */
+  .mobile-menu-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mobile-profile-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mobile-profile-img {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--ink);
+    cursor: pointer;
+  }
+  .mobile-profile-fallback {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--accent-bright);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 14px;
+    font-family: var(--font-body);
+    cursor: pointer;
+    border: 2px solid var(--ink);
+  }
+  .mobile-menu-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: var(--surface-alt);
+    border: 2px solid var(--ink);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+  }
+  .mobile-menu-btn:hover {
+    background: var(--ink);
+    color: var(--accent-bright);
+  }
+  /* + upload button on mobile navbar */
+  .mobile-upload-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: var(--surface-alt);
+    border: 2px solid var(--ink);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    text-decoration: none;
+    box-shadow: 2px 2px 0px #000;
+    transition: background 0.15s ease;
+  }
+  .mobile-upload-btn:hover {
+    background: var(--ink);
+    color: var(--accent-bright);
+  }
+  .mobile-upload-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: none;
+  }
+  /* Guest circle (not logged in) */
+  .mobile-profile-guest {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--surface-alt);
+    color: var(--ink-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--ink);
+    cursor: pointer;
+  }
+  .mobile-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 16px;
+    margin-top: 8px;
+    background: var(--surface);
+    border: 3px solid var(--ink);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    min-width: 180px;
+    z-index: 200;
+    overflow: hidden;
+  }
+  .mobile-dropdown.open {
+    display: block;
+  }
+  .mobile-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 16px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.1s ease;
+  }
+  .mobile-dropdown-item:hover {
+    background: var(--surface-alt);
+  }
+
   .book-grid { padding: 20px 16px 140px; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
   .bottom-nav { display: flex; }
   .book-card-title { font-size: 18px; }
@@ -1083,7 +1249,8 @@ html.dark .logo-img {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px 6px 6px;
+  padding: 0 14px 0 6px;
+  height: 40px;
   border-radius: 8px;
   background: var(--surface-alt);
   border: 2px solid var(--ink);
@@ -1124,6 +1291,11 @@ html.dark .logo-img {
   background: var(--surface);
   border: 2px solid var(--ink);
   border-radius: 8px;
+  padding: 0 16px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
   padding: 10px 16px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -1668,12 +1840,13 @@ html.dark .logo-img {
    ============================================================ */
 /* Book-open animation */
 .book-opening {
-  animation: bookOpen 0.4s ease forwards;
+  animation: bookOpen 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
 @keyframes bookOpen {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.08) rotateY(10deg); }
-  100% { transform: scale(1.15) rotateY(20deg); opacity: 0.7; }
+  0% { transform: scale(1) rotateY(0deg); }
+  30% { transform: scale(1.05) rotateY(5deg); }
+  60% { transform: scale(1.1) rotateY(15deg); }
+  100% { transform: scale(1.15) rotateY(25deg); opacity: 0.7; }
 }
 
 /* Comic background slideshow */
@@ -1709,6 +1882,125 @@ html.dark .logo-img {
 @keyframes slideUp {
   from { transform: translateY(20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-3deg); }
+  75% { transform: rotate(3deg); }
+}
+
+@keyframes popIn {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+/* Enhanced button animations */
+.btn {
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 6px 6px 0px #000;
+}
+
+.btn:active {
+  transform: translateY(2px);
+  box-shadow: 2px 2px 0px #000;
+}
+
+/* Book card hover animation enhancement */
+.book-card {
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94), 
+              box-shadow 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.book-card:hover {
+  animation: pulse 0.3s ease;
+}
+
+/* Header search input focus animation */
+.header-search input[type="text"]:focus {
+  animation: popIn 0.2s ease;
+}
+
+/* Mobile menu button animation */
+.mobile-menu-btn {
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.mobile-menu-btn:hover {
+  animation: wiggle 0.3s ease;
+}
+
+/* Genre chip hover animation */
+.genre-chip {
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.genre-chip:hover {
+  animation: popIn 0.2s ease;
+}
+
+/* Rating stars animation */
+.star-btn {
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.star-btn:hover {
+  animation: pulse 0.2s ease;
+}
+
+/* Bookmark button animation */
+.bookmark-btn {
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.bookmark-btn:hover {
+  animation: wiggle 0.3s ease;
+}
+
+/* Profile card animation */
+.profile-modal-overlay {
+  animation: fadeIn 0.3s ease;
+}
+
+.profile-modal-content {
+  animation: slideUp 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* Loading spinner animation */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* Success checkmark animation */
+@keyframes checkmark {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.success-checkmark {
+  animation: checkmark 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* ============================================================
@@ -2179,5 +2471,173 @@ html.dark .reader-rating {
   .book-rating-badge {
     font-size: 10px;
     padding: 3px 8px;
+  }
+}
+
+/* ============================================================
+   BOOKMARKS & READING STATS
+   ============================================================ */
+.bookmark-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  padding: 7px 14px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 2px 2px 0px #000;
+  transition: all 0.15s ease;
+}
+
+.bookmark-btn:hover {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0px #000;
+  background: var(--surface-alt);
+}
+
+.bookmark-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+.bookmarks-panel {
+  position: fixed;
+  top: 70px;
+  right: 20px;
+  width: 280px;
+  max-height: 400px;
+  background: var(--surface);
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  overflow: hidden;
+  display: none;
+}
+
+.bookmarks-panel.open {
+  display: block;
+  animation: slideIn 0.2s ease;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.bookmarks-header {
+  padding: 12px 16px;
+  background: var(--ink);
+  color: var(--accent-bright);
+  font-family: var(--font-graffiti);
+  font-size: 14px;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bookmarks-close {
+  background: none;
+  border: none;
+  color: var(--accent-bright);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.bookmarks-list {
+  padding: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  background: var(--surface-alt);
+  border: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.bookmark-item:hover {
+  border-color: var(--ink);
+}
+
+.bookmark-goto {
+  flex: 1;
+  background: none;
+  border: none;
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.bookmark-goto:hover {
+  text-decoration: underline;
+}
+
+.bookmark-delete {
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.6;
+}
+
+.bookmark-delete:hover {
+  opacity: 1;
+}
+
+.bookmarks-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.reading-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-alt);
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.reading-stats-icon {
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .bookmarks-panel {
+    right: 10px;
+    left: 10px;
+    width: auto;
+  }
+  .bookmark-btn {
+    font-size: 12px;
+    padding: 6px 10px;
   }
 }

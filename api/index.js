@@ -7,11 +7,11 @@ const cookieSession = require('cookie-session');
 const rateLimit = require('express-rate-limit');
 
 
-const passport = require('./src/auth/passport');
-const authRouter = require('./src/routes/auth');
-const booksRouter = require('./src/routes/books');
-const adminRouter = require('./src/routes/admin');
-const { checkCalibre } = require('./src/utils/convert');
+const passport = require('../src/auth/passport');
+const authRouter = require('../src/routes/auth');
+const booksRouter = require('../src/routes/books');
+const adminRouter = require('../src/routes/admin');
+const { checkCalibre } = require('../src/utils/convert');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -58,7 +58,7 @@ app.get('/api/health', async (req, res) => {
   res.json({ ok: true, mobiConversionAvailable: calibreAvailable });
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.use((err, req, res, next) => {
   if (err && err.message) {
