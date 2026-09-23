@@ -1,15 +1,17 @@
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 
 /**
- * Dual-mode database layer.
+ * Database layer with three storage modes, chosen automatically:
  *
- *  - Cloud mode: when TURSO_DATABASE_URL (+ TURSO_AUTH_TOKEN) is set, every
- *    query runs against a persistent Turso/libSQL database. This is what
- *    makes data survive Vercel deploys and cold starts.
- *  - Local mode: a node:sqlite file database (data/library.db locally, or
- *    /tmp on Vercel when no cloud credentials are configured — ephemeral,
- *    but keeps the app running during setup).
+ *  1. Cloud mode — TURSO_DATABASE_URL (+ TURSO_AUTH_TOKEN) set: every query
+ *     runs against a persistent Turso/libSQL database. Most robust option.
+ *  2. Blob mode — on Vercel with BLOB_READ_WRITE_TOKEN and SESSION_SECRET set:
+ *     the SQLite file is pulled (decrypted) from Vercel Blob at cold start and
+ *     flushed (encrypted) back after every write. Survives deploys and is
+ *     shared across instances; concurrent writers resolve last-write-wins.
+ *  3. Local mode — plain file database (data/library.db when developing).
  *
  * The API mirrors the old `db.prepare(sql).get/all/run(...)` shape, except
  * every call returns a Promise — call sites `await` it.
@@ -19,6 +21,19 @@ const TURSO_URL = process.env.TURSO_DATABASE_URL;
 const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN || undefined;
 const useCloud = !!(TURSO_URL && TURSO_TOKEN);
 
+const DB_BLOB_KEY = process.env.DB_BLOB_KEY || 'db/library.db.enc';
+const useBlob =
+  !useCloud &&
+  !!process.env.VERCEL &&
+  !!process.env.BLOB_READ_WRITE_TOKEN &&
+  !!process.env.SESSION_SECRET;
+
+let blob = null;
+if (useBlob) blob = require('@vercel/blob');
+
+const DATA_DIR = process.env.VERCEL ? '/tmp' : path.join(__dirname, '..', 'data');
+const DB_PATH = path.join(DATA_DIR, 'library.db');
+
 let cloud = null;
 let sqlite = null;
 
@@ -27,20 +42,140 @@ if (useCloud) {
   cloud = createClient({ url: TURSO_URL, authToken: TURSO_TOKEN });
   console.log('✅ Using persistent Turso cloud database');
 } else {
-  const { DatabaseSync } = require('node:sqlite');
-  const DATA_DIR = process.env.VERCEL ? '/tmp' : path.join(__dirname, '..', 'data');
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  sqlite = new DatabaseSync(path.join(DATA_DIR, 'library.db'));
-  if (process.env.VERCEL) {
-    console.warn('⚠️  TURSO_DATABASE_URL not set — falling back to ephemeral /tmp database. Data will NOT survive deploys.');
+  if (process.env.VERCEL && !useBlob) {
+    console.warn(
+      '⚠️  No BLOB_READ_WRITE_TOKEN/SESSION_SECRET — falling back to ephemeral /tmp database. Data will NOT survive deploys.'
+    );
   }
 }
 
-// --- raw drivers (bypass the boot gate; used by the boot sequence itself) --
+// --- blob persistence helpers ----------------------------------------------
+
+function cipherKey() {
+  return crypto.createHash('sha256').update(String(process.env.SESSION_SECRET)).digest();
+}
+
+function encrypt(buf) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', cipherKey(), iv);
+  const body = Buffer.concat([cipher.update(buf), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), body]);
+}
+
+function decrypt(buf) {
+  const iv = buf.subarray(0, 12);
+  const tag = buf.subarray(12, 28);
+  const body = buf.subarray(28);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', cipherKey(), iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(body), decipher.final()]);
+}
+
+function isNotFound(err) {
+  if (!err) return false;
+  return (
+    err.name === 'BlobNotFoundError' ||
+    err.name === 'BlobStoreNotFoundError' ||
+    /not found/i.test(String(err.message || ''))
+  );
+}
+
+function openSqlite() {
+  const { DatabaseSync } = require('node:sqlite');
+  sqlite = new DatabaseSync(DB_PATH);
+}
+
+let remoteStamp = null; // uploadedAt of the blob copy we last synced with
+let dirty = false; // local writes not yet pushed
+let lastCheckAt = 0;
+let booted = false;
+
+/** Download + decrypt the persisted database into /tmp (cold start). */
+async function pullFromBlob() {
+  try {
+    const meta = await blob.head(DB_BLOB_KEY);
+    const res = await fetch(meta.url);
+    if (!res.ok) throw new Error(`blob download failed: ${res.status}`);
+    fs.writeFileSync(DB_PATH, decrypt(Buffer.from(await res.arrayBuffer())));
+    remoteStamp = meta.uploadedAt || null;
+    dirty = false;
+    console.log('✅ Loaded persisted database from Blob');
+    return true;
+  } catch (err) {
+    if (isNotFound(err)) {
+      console.log('ℹ️  No persisted database in Blob yet — starting fresh');
+      return false;
+    }
+    console.warn('⚠️  Could not load database from Blob:', err.message);
+    return false;
+  }
+}
+
+let pushQueue = Promise.resolve();
+
+/** Encrypt + upload the local database. Serialized so writes never interleave. */
+function pushToBlob() {
+  pushQueue = pushQueue.then(async () => {
+    const plain = fs.readFileSync(DB_PATH);
+    const meta = await blob.put(DB_BLOB_KEY, encrypt(plain), {
+      access: 'public',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: 'application/octet-stream',
+    });
+    remoteStamp = meta.uploadedAt || new Date().toISOString();
+    dirty = false;
+  });
+  return pushQueue;
+}
+
+/**
+ * Before writing, refresh from blob if another instance has pushed since we
+ * last synced — keeps stale instances from clobbering newer data. Throttled
+ * so a burst of writes only checks once.
+ */
+async function refreshIfStale() {
+  if (!useBlob || dirty) return;
+  const now = Date.now();
+  if (now - lastCheckAt < 15000) return;
+  lastCheckAt = now;
+  try {
+    const meta = await blob.head(DB_BLOB_KEY);
+    if (remoteStamp && meta.uploadedAt === remoteStamp) return;
+    const res = await fetch(meta.url);
+    if (!res.ok) return;
+    fs.writeFileSync(DB_PATH, decrypt(Buffer.from(await res.arrayBuffer())));
+    remoteStamp = meta.uploadedAt || null;
+    try { sqlite.close(); } catch (_) {}
+    openSqlite();
+    console.log('🔄 Refreshed database from Blob (another instance wrote)');
+  } catch (err) {
+    if (!isNotFound(err)) console.warn('⚠️  Blob refresh failed:', err.message);
+  }
+}
+
+async function persistAfterWrite() {
+  if (!useBlob || !booted) return; // boot does a single push when it finishes
+  dirty = true;
+  try {
+    await pushToBlob();
+  } catch (err) {
+    console.warn('⚠️  Could not persist database to Blob:', err.message);
+  }
+}
+
+const MUTATION = /^\s*(insert|update|delete|replace|create|alter|drop)\b/i;
+const isMutation = (sql) => MUTATION.test(sql);
+
+// --- raw drivers (bypass the boot gate; used by the boot sequence itself) ---
 
 async function rawExec(sql) {
   if (cloud) return cloud.executeMultiple(sql);
-  return sqlite.exec(sql);
+  if (isMutation(sql)) await refreshIfStale();
+  const out = sqlite.exec(sql);
+  await persistAfterWrite();
+  return out;
 }
 
 async function rawAll(sql, params) {
@@ -61,7 +196,10 @@ async function rawGet(sql, params) {
 
 async function rawRun(sql, params) {
   if (cloud) return cloud.execute({ sql, args: params });
-  return sqlite.prepare(sql).run(...params);
+  if (isMutation(sql)) await refreshIfStale();
+  const out = sqlite.prepare(sql).run(...params);
+  await persistAfterWrite();
+  return out;
 }
 
 // --- schema + migrations (idempotent) --------------------------------------
@@ -174,10 +312,15 @@ async function tableColumns(table) {
 }
 
 const ready = (async () => {
+  if (!cloud) {
+    if (useBlob) await pullFromBlob();
+    openSqlite();
+  }
+
   // Recreate tables if an old OAuth-only schema (no password_hash) is found.
   try {
     const columns = await tableColumns('users');
-    if (columns.length > 0 && !columns.some(c => c.name === 'password_hash')) {
+    if (columns.length > 0 && !columns.some((c) => c.name === 'password_hash')) {
       console.log('🔄 Old OAuth schema detected. Recreating database tables...');
       await rawExec(`
         DROP TABLE IF EXISTS reading_progress;
@@ -200,7 +343,7 @@ const ready = (async () => {
   // Incremental column migrations (idempotent, cheap no-ops once applied).
   try {
     const cols = await tableColumns('books');
-    const names = cols.map(c => c.name);
+    const names = cols.map((c) => c.name);
     if (!names.includes('language')) {
       await rawRun(`ALTER TABLE books ADD COLUMN language TEXT DEFAULT 'English'`, []);
       console.log('✅ Added language column to books table');
@@ -213,11 +356,21 @@ const ready = (async () => {
 
   try {
     const cols = await tableColumns('users');
-    if (!cols.some(c => c.name === 'google_id')) {
+    if (!cols.some((c) => c.name === 'google_id')) {
       await rawRun(`ALTER TABLE users ADD COLUMN google_id TEXT`, []);
       console.log('✅ Added google_id column to users table');
     }
   } catch (_) {}
+
+  // One flush for the whole boot sequence (schema/migrations above).
+  if (useBlob) {
+    try {
+      await pushToBlob();
+    } catch (err) {
+      console.warn('⚠️  Could not persist database to Blob:', err.message);
+    }
+  }
+  booted = true;
 })();
 
 // --- public API -------------------------------------------------------------
@@ -244,4 +397,4 @@ async function exec(sql) {
   return rawExec(sql);
 }
 
-module.exports = { prepare, exec, useCloud };
+module.exports = { prepare, exec, useCloud, useBlob };

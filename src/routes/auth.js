@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const passport = require('../auth/passport');
 const users = require('../models/users');
 const { sendOtpEmail } = require('../utils/email');
-const { blobEnabled, saveFile, AVATARS_PREFIX } = require('../utils/storage');
+const { blobEnabled, saveFile, getFileUrl, AVATARS_PREFIX } = require('../utils/storage');
 
 const router = express.Router();
 
@@ -311,7 +311,13 @@ router.post('/unfollow/:userId', async (req, res) => {
 });
 
 // --- Serving User Avatar Files ---------------------------------------------
-router.get('/avatar/:filename', (req, res) => {
+router.get('/avatar/:filename', async (req, res) => {
+  // Avatars uploaded (or restored) into blob storage resolve there first, so
+  // they survive deploys and are visible from every function instance.
+  if (blobEnabled) {
+    const url = await getFileUrl(AVATARS_PREFIX + req.params.filename);
+    if (url) return res.redirect(url);
+  }
   const filePath = path.join(UPLOAD_DIR, req.params.filename);
   if (fs.existsSync(filePath)) {
     return res.sendFile(filePath);
