@@ -4,11 +4,10 @@ const users = require('../models/users');
 
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser((id, done) => {
-  try {
-    done(null, users.findById(id));
-  } catch (err) {
-    done(err);
-  }
+  users
+    .findById(id)
+    .then(user => done(null, user))
+    .catch(err => done(err));
 });
 
 // --- Google OAuth Strategy ------------------------------------------------
@@ -22,13 +21,13 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         scope: ['profile', 'email'],
       },
       (accessToken, refreshToken, profile, done) => {
-        try {
-          const user = users.findOrCreateGoogleUser(profile);
-          return done(null, user);
-        } catch (err) {
-          console.error('Google OAuth error:', err);
-          return done(err, null);
-        }
+        users
+          .findOrCreateGoogleUser(profile)
+          .then(user => done(null, user))
+          .catch(err => {
+            console.error('Google OAuth error:', err);
+            done(err, null);
+          });
       }
     )
   );
@@ -38,4 +37,3 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 }
 
 module.exports = passport;
-

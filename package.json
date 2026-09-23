@@ -11,6 +11,8 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "@vercel/blob": "^2.8.0",
     "cookie-parser": "^1.4.7",
     "cookie-session": "^2.1.1",
     "cors": "^2.8.5",

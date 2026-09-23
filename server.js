@@ -38,6 +38,18 @@ app.use(
     secure: process.env.NODE_ENV === 'production' && process.env.DISABLE_SECURE_COOKIE !== 'true',
   })
 );
+// cookie-session has no server-side store, so its session object lacks the
+// regenerate()/save() methods passport's SessionManager calls during
+// req.login()/req.logout(). No-op stand-ins are safe: cookie-session writes
+// the signed cookie at response end regardless of these calls.
+app.use((req, res, next) => {
+  if (req.session && typeof req.session.regenerate !== 'function') {
+    req.session.regenerate = (cb) => { if (cb) cb(null); };
+    req.session.save = (cb) => { if (cb) cb(null); };
+  }
+  next();
+});
+
 app.use(passport.initialize());
 app.use(passport.session());
 

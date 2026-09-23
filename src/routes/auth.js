@@ -5,10 +5,11 @@ const fs = require('node:fs');
 const passport = require('../auth/passport');
 const users = require('../models/users');
 const { sendOtpEmail } = require('../utils/email');
+const { blobEnabled, saveFile, AVATARS_PREFIX } = require('../utils/storage');
 
 const router = express.Router();
 
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
+const UPLOAD_DIR = process.env.VERCEL ? '/tmp/uploads' : path.join(__dirname, '..', '..', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const upload = multer({
@@ -26,9 +27,9 @@ router.get('/providers', (req, res) => {
 });
 
 // --- Current session -------------------------------------------------------
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   if (!req.user) return res.json({ user: null });
-  const followInfo = users.getFollowInfo(req.user.id);
+  const followInfo = await users.getFollowInfo(req.user.id);
   res.json({
     user: {
       id: req.user.id,
@@ -49,36 +50,40 @@ router.get('/me', (req, res) => {
 // --- Logout ----------------------------------------------------------------
 router.post('/logout', (req, res) => {
   req.logout(() => {
-    req.session.destroy(() => {
-      res.clearCookie('connect.sid');
-      res.json({ ok: true });
-    });
+    // cookie-session has no destroy(): nulling the session deletes the cookie
+    req.session = null;
+    res.json({ ok: true });
   });
 });
 
 // --- Local Authentication Endpoints ---------------------------------------
 
-router.post('/register', upload.single('avatar'), (req, res) => {
+router.post('/register', upload.single('avatar'), async (req, res) => {
   const { username, password, email, age, gender, pronouns, instagram_handle } = req.body;
   if (!username || !username.trim() || !password || !email || !email.trim()) {
     return res.status(400).json({ error: 'Username, password, and email are required.' });
   }
 
-  if (users.findByUsername(username)) {
+  if (await users.findByUsername(username)) {
     return res.status(400).json({ error: 'Username is already taken.' });
   }
 
-  if (users.findByEmail(email)) {
+  if (await users.findByEmail(email)) {
     return res.status(400).json({ error: 'Email is already registered.' });
   }
 
   let avatarUrl = '';
   if (req.file) {
-    avatarUrl = `/auth/avatar/${req.file.filename}`;
+    if (blobEnabled) {
+      avatarUrl = (await saveFile(AVATARS_PREFIX + req.file.filename, req.file.path, req.file.mimetype)) || `/auth/avatar/${req.file.filename}`;
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    } else {
+      avatarUrl = `/auth/avatar/${req.file.filename}`;
+    }
   }
 
   try {
-    const user = users.create(
+    const user = await users.create(
       username,
       password,
       email,
@@ -102,13 +107,13 @@ router.post('/register', upload.single('avatar'), (req, res) => {
   }
 });
 
-router.post('/login', (req, res, next) => {
+router.post('/login', async (req, res, next) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required.' });
   }
 
-  const user = users.findByUsername(username);
+  const user = await users.findByUsername(username);
   if (!user || !users.verifyPassword(password, user.password_hash)) {
     return res.status(401).json({ error: 'Invalid username or password.' });
   }
@@ -130,14 +135,14 @@ router.post('/forgot-password', async (req, res) => {
     return res.status(400).json({ error: 'Email is required.' });
   }
 
-  const user = users.findByEmail(email);
+  const user = await users.findByEmail(email);
   if (!user) {
     return res.status(404).json({ error: 'No account found with this email address.' });
   }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
-  users.setOtp(email, otp, expiresAt);
+  await users.setOtp(email, otp, expiresAt);
 
   try {
     await sendOtpEmail(email, otp);
@@ -152,34 +157,34 @@ router.post('/forgot-password', async (req, res) => {
   });
 });
 
-router.post('/reset-password', (req, res) => {
+router.post('/reset-password', async (req, res) => {
   const { email, otp, newPassword } = req.body;
   if (!email || !otp || !newPassword) {
     return res.status(400).json({ error: 'Email, OTP, and new password are required.' });
   }
 
-  if (!users.verifyOtp(email, otp)) {
+  if (!(await users.verifyOtp(email, otp))) {
     return res.status(400).json({ error: 'Invalid or expired OTP. Please try again.' });
   }
 
-  const user = users.findByEmail(email);
+  const user = await users.findByEmail(email);
   if (!user) {
     return res.status(404).json({ error: 'Account not found.' });
   }
 
-  users.updatePassword(user.id, newPassword);
+  await users.updatePassword(user.id, newPassword);
   res.json({ ok: true, message: 'Password updated successfully. You can now log in.' });
 });
 
 // --- Verify OTP (just validate, don't login or reset) --------------------
 
-router.post('/forgot-password/verify', (req, res) => {
+router.post('/forgot-password/verify', async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) {
     return res.status(400).json({ error: 'Email and OTP are required.' });
   }
 
-  if (!users.verifyOtp(email, otp)) {
+  if (!(await users.verifyOtp(email, otp))) {
     return res.status(400).json({ error: 'Invalid or expired OTP. Please try again.' });
   }
 
@@ -188,23 +193,23 @@ router.post('/forgot-password/verify', (req, res) => {
 
 // --- Verify OTP & Login directly (without password reset) ------------------
 
-router.post('/verify-otp-login', (req, res) => {
+router.post('/verify-otp-login', async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) {
     return res.status(400).json({ error: 'Email and OTP are required.' });
   }
 
-  if (!users.verifyOtp(email, otp)) {
+  if (!(await users.verifyOtp(email, otp))) {
     return res.status(400).json({ error: 'Invalid or expired OTP. Please try again.' });
   }
 
-  const user = users.findByEmail(email);
+  const user = await users.findByEmail(email);
   if (!user) {
     return res.status(404).json({ error: 'Account not found.' });
   }
 
   // Clear the OTP after successful verification
-  users.clearOtp(email);
+  await users.clearOtp(email);
 
   req.login(user, (err) => {
     if (err) {
@@ -217,7 +222,7 @@ router.post('/verify-otp-login', (req, res) => {
 
 // --- Profile Update --------------------------------------------------------
 
-router.post('/update-profile', upload.single('avatar'), (req, res) => {
+router.post('/update-profile', upload.single('avatar'), async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Please sign in to update your profile.' });
 
   const { age, gender, pronouns, instagram_handle } = req.body;
@@ -229,11 +234,16 @@ router.post('/update-profile', upload.single('avatar'), (req, res) => {
   };
 
   if (req.file) {
-    updateData.avatarUrl = `/auth/avatar/${req.file.filename}`;
+    if (blobEnabled) {
+      updateData.avatarUrl = (await saveFile(AVATARS_PREFIX + req.file.filename, req.file.path, req.file.mimetype)) || `/auth/avatar/${req.file.filename}`;
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    } else {
+      updateData.avatarUrl = `/auth/avatar/${req.file.filename}`;
+    }
   }
 
   try {
-    const updatedUser = users.updateProfile(req.user.id, updateData);
+    const updatedUser = await users.updateProfile(req.user.id, updateData);
     res.json({ ok: true, user: updatedUser });
   } catch (err) {
     console.error(err);
@@ -256,12 +266,12 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
 // --- Public User Profiles & Follows ---------------------------------------
 
-router.get('/profile/:userId', (req, res) => {
-  const profileUser = users.findById(req.params.userId);
+router.get('/profile/:userId', async (req, res) => {
+  const profileUser = await users.findById(req.params.userId);
   if (!profileUser) return res.status(404).json({ error: 'Member profile not found.' });
 
   const currentUserId = req.user ? req.user.id : null;
-  const followInfo = users.getFollowInfo(profileUser.id, currentUserId);
+  const followInfo = await users.getFollowInfo(profileUser.id, currentUserId);
 
   res.json({
     id: profileUser.id,
@@ -277,7 +287,7 @@ router.get('/profile/:userId', (req, res) => {
   });
 });
 
-router.post('/follow/:userId', (req, res) => {
+router.post('/follow/:userId', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Please sign in to follow members.' });
 
   const targetId = req.params.userId;
@@ -285,7 +295,7 @@ router.post('/follow/:userId', (req, res) => {
     return res.status(400).json({ error: 'You cannot follow yourself.' });
   }
 
-  const success = users.follow(req.user.id, targetId);
+  const success = await users.follow(req.user.id, targetId);
   if (success) {
     res.json({ ok: true });
   } else {
@@ -293,10 +303,10 @@ router.post('/follow/:userId', (req, res) => {
   }
 });
 
-router.post('/unfollow/:userId', (req, res) => {
+router.post('/unfollow/:userId', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Please sign in to unfollow members.' });
 
-  users.unfollow(req.user.id, req.params.userId);
+  await users.unfollow(req.user.id, req.params.userId);
   res.json({ ok: true });
 });
 

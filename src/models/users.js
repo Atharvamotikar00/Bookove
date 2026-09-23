@@ -2,16 +2,19 @@ const { randomUUID } = require('node:crypto');
 const crypto = require('node:crypto');
 const db = require('../db');
 
-function findById(id) {
-  return db.prepare(`SELECT * FROM users WHERE id = ?`).get(id) || null;
+async function findById(id) {
+  const row = await db.prepare(`SELECT * FROM users WHERE id = ?`).get(id);
+  return row || null;
 }
 
-function findByUsername(username) {
-  return db.prepare(`SELECT * FROM users WHERE username = ?`).get(username) || null;
+async function findByUsername(username) {
+  const row = await db.prepare(`SELECT * FROM users WHERE username = ?`).get(username);
+  return row || null;
 }
 
-function findByEmail(email) {
-  return db.prepare(`SELECT * FROM users WHERE email = ?`).get(email) || null;
+async function findByEmail(email) {
+  const row = await db.prepare(`SELECT * FROM users WHERE email = ?`).get(email);
+  return row || null;
 }
 
 function hashPassword(password) {
@@ -29,11 +32,11 @@ function verifyPassword(password, stored) {
   return hash === verifyHash;
 }
 
-function create(username, password, email, age, gender, pronouns, instagramHandle = '', avatarUrl = '') {
+async function create(username, password, email, age, gender, pronouns, instagramHandle = '', avatarUrl = '') {
   const id = randomUUID();
   const passwordHash = hashPassword(password);
-  
-  db.prepare(
+
+  await db.prepare(
     `INSERT INTO users (id, username, password_hash, email, age, gender, pronouns, instagram_handle, avatar_url)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
@@ -47,14 +50,14 @@ function create(username, password, email, age, gender, pronouns, instagramHandl
     instagramHandle.trim(),
     avatarUrl
   );
-  
+
   return findById(id);
 }
 
-function updateProfile(id, data) {
+async function updateProfile(id, data) {
   const fields = [];
   const params = [];
-  
+
   if (data.age !== undefined) {
     fields.push('age = ?');
     params.push(data.age ? parseInt(data.age, 10) : null);
@@ -75,23 +78,23 @@ function updateProfile(id, data) {
     fields.push('avatar_url = ?');
     params.push(data.avatarUrl);
   }
-  
+
   if (fields.length === 0) return findById(id);
-  
+
   params.push(id);
-  db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...params);
-  
+  await db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+
   return findById(id);
 }
 
-function updatePassword(id, password) {
+async function updatePassword(id, password) {
   const passwordHash = hashPassword(password);
-  db.prepare(`UPDATE users SET password_hash = ?, otp = NULL, otp_expires_at = NULL WHERE id = ?`).run(passwordHash, id);
+  await db.prepare(`UPDATE users SET password_hash = ?, otp = NULL, otp_expires_at = NULL WHERE id = ?`).run(passwordHash, id);
   return true;
 }
 
-function setOtp(email, otp, expiresAt) {
-  db.prepare(`UPDATE users SET otp = ?, otp_expires_at = ? WHERE email = ?`).run(
+async function setOtp(email, otp, expiresAt) {
+  await db.prepare(`UPDATE users SET otp = ?, otp_expires_at = ? WHERE email = ?`).run(
     otp,
     expiresAt,
     email.trim().toLowerCase()
@@ -99,15 +102,15 @@ function setOtp(email, otp, expiresAt) {
   return true;
 }
 
-function clearOtp(email) {
-  db.prepare(`UPDATE users SET otp = NULL, otp_expires_at = NULL WHERE email = ?`).run(
+async function clearOtp(email) {
+  await db.prepare(`UPDATE users SET otp = NULL, otp_expires_at = NULL WHERE email = ?`).run(
     email.trim().toLowerCase()
   );
   return true;
 }
 
-function verifyOtp(email, otp) {
-  const user = findByEmail(email);
+async function verifyOtp(email, otp) {
+  const user = await findByEmail(email);
   if (!user || !user.otp || !user.otp_expires_at) return false;
   if (user.otp !== otp) return false;
   if (Date.now() > user.otp_expires_at) return false;
@@ -115,54 +118,54 @@ function verifyOtp(email, otp) {
 }
 
 // --- Following and Followers ---
-function isFollowing(followerId, followingId) {
-  const row = db.prepare(`SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?`).get(followerId, followingId);
+async function isFollowing(followerId, followingId) {
+  const row = await db.prepare(`SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?`).get(followerId, followingId);
   return !!row;
 }
 
-function follow(followerId, followingId) {
+async function follow(followerId, followingId) {
   if (followerId === followingId) return false;
   try {
-    db.prepare(`INSERT OR IGNORE INTO follows (follower_id, following_id) VALUES (?, ?)`).run(followerId, followingId);
+    await db.prepare(`INSERT OR IGNORE INTO follows (follower_id, following_id) VALUES (?, ?)`).run(followerId, followingId);
     return true;
   } catch (_) {
     return false;
   }
 }
 
-function unfollow(followerId, followingId) {
-  db.prepare(`DELETE FROM follows WHERE follower_id = ? AND following_id = ?`).run(followerId, followingId);
+async function unfollow(followerId, followingId) {
+  await db.prepare(`DELETE FROM follows WHERE follower_id = ? AND following_id = ?`).run(followerId, followingId);
   return true;
 }
 
-function getFollowInfo(profileUserId, currentUserId = null) {
-  const followersCount = db.prepare(`SELECT COUNT(*) as count FROM follows WHERE following_id = ?`).get(profileUserId).count;
-  const followingCount = db.prepare(`SELECT COUNT(*) as count FROM follows WHERE follower_id = ?`).get(profileUserId).count;
-  const isFollowingUser = currentUserId ? isFollowing(currentUserId, profileUserId) : false;
-  
+async function getFollowInfo(profileUserId, currentUserId = null) {
+  const followers = await db.prepare(`SELECT COUNT(*) as count FROM follows WHERE following_id = ?`).get(profileUserId);
+  const following = await db.prepare(`SELECT COUNT(*) as count FROM follows WHERE follower_id = ?`).get(profileUserId);
+  const isFollowingUser = currentUserId ? await isFollowing(currentUserId, profileUserId) : false;
+
   return {
-    followersCount,
-    followingCount,
+    followersCount: followers.count,
+    followingCount: following.count,
     isFollowing: isFollowingUser
   };
 }
 
 // --- Google OAuth user creation/lookup -------------------------------------
-function findOrCreateGoogleUser(profile) {
+async function findOrCreateGoogleUser(profile) {
   const googleId = profile.id;
   const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
   const displayName = profile.displayName || (email ? email.split('@')[0] : 'google_user');
   const avatarUrl = profile.photos && profile.photos[0] ? profile.photos[0].value : '';
 
   // Check if a user with this google_id already exists
-  let user = db.prepare('SELECT * FROM users WHERE google_id = ?').get(googleId);
+  let user = await db.prepare('SELECT * FROM users WHERE google_id = ?').get(googleId);
   if (user) return user;
 
   // Check if a user with this email already exists — link the Google account
   if (email) {
-    user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    user = await db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (user) {
-      db.prepare('UPDATE users SET google_id = ?, avatar_url = ? WHERE id = ?').run(
+      await db.prepare('UPDATE users SET google_id = ?, avatar_url = ? WHERE id = ?').run(
         googleId,
         avatarUrl || user.avatar_url,
         user.id
@@ -174,15 +177,15 @@ function findOrCreateGoogleUser(profile) {
   // Create a new user from Google data
   const id = randomUUID();
   // Generate a unique username from display name
-  let baseUsername = displayName.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_');
+  let baseUsername = displayName.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_') || 'google_user';
   let username = baseUsername;
   let counter = 1;
-  while (findByUsername(username)) {
+  while (await findByUsername(username)) {
     username = baseUsername + '_' + counter;
     counter++;
   }
 
-  db.prepare(
+  await db.prepare(
     `INSERT INTO users (id, username, password_hash, email, avatar_url, google_id)
      VALUES (?, ?, '', ?, ?, ?)`
   ).run(id, username, email || '', avatarUrl, googleId);
@@ -206,4 +209,3 @@ module.exports = {
   unfollow,
   getFollowInfo
 };
-

@@ -3,8 +3,10 @@ const multer = require('multer');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
+const { Readable } = require('node:stream');
 const { convertMobiToEpub } = require('../utils/convert');
 const db = require('../db');
+const { blobEnabled, saveFile, getFileUrl, deleteFile, BOOKS_PREFIX } = require('../utils/storage');
 
 const router = express.Router();
 
@@ -25,7 +27,7 @@ const CONTENT_TYPES = {
 };
 
 // --- List books (with optional search, format, genre, trending filter) -----
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const { q, format, genre, language, sort } = req.query;
 
   // Trending sort: join reading_progress to count reads per book
@@ -55,7 +57,7 @@ router.get('/', (req, res) => {
     }
 
     sql += ` GROUP BY b.id ORDER BY read_count DESC, b.created_at DESC`;
-    return res.json(db.prepare(sql).all(...params));
+    return res.json(await db.prepare(sql).all(...params));
   }
 
   if (sort === 'hidden-gems') {
@@ -84,7 +86,7 @@ router.get('/', (req, res) => {
     }
 
     sql += ` GROUP BY b.id ORDER BY read_count ASC, b.created_at DESC`;
-    return res.json(db.prepare(sql).all(...params));
+    return res.json(await db.prepare(sql).all(...params));
   }
 
   let sql = `SELECT * FROM books WHERE status = 'visible'`;
@@ -108,7 +110,7 @@ router.get('/', (req, res) => {
   }
 
   sql += ` ORDER BY created_at DESC`;
-  const rows = db.prepare(sql).all(...params);
+  const rows = await db.prepare(sql).all(...params);
   res.json(rows);
 });
 
@@ -125,6 +127,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   }
 
   if (!title || !title.trim()) {
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
     return res.status(400).json({ error: 'Title is required.' });
   }
 
@@ -144,6 +147,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
   const bookId = crypto.randomUUID();
   let storedFilename = req.file.filename;
+  let stagedPath = req.file.path;
 
   // Try to convert MOBI to EPUB if Calibre is available
   let finalFormat = ext;
@@ -151,8 +155,29 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const epubPath = await convertMobiToEpub(req.file.path, UPLOAD_DIR);
     if (epubPath) {
       storedFilename = path.basename(epubPath);
+      stagedPath = epubPath;
       finalFormat = 'epub';
     }
+  }
+
+  // Persist the file to blob storage BEFORE recording it, so no DB row ever
+  // points at a missing file.
+  if (blobEnabled) {
+    try {
+      await saveFile(
+        BOOKS_PREFIX + storedFilename,
+        stagedPath,
+        CONTENT_TYPES[finalFormat] || 'application/octet-stream'
+      );
+    } catch (err) {
+      console.error('Blob upload failed:', err);
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+      if (stagedPath !== req.file.path) { try { fs.unlinkSync(stagedPath); } catch (_) {} }
+      return res.status(500).json({ error: 'Failed to store the uploaded file.' });
+    }
+    // staged copies are disposable once the file lives in blob storage
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
+    if (stagedPath !== req.file.path) { try { fs.unlinkSync(stagedPath); } catch (_) {} }
   }
 
   const user = req.user;
@@ -168,36 +193,43 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     }
   }
 
-  db.prepare(
-    `INSERT INTO books (id, title, author, description, format, genres, language, original_filename, stored_filename, uploader_id, uploader_name, uploader_avatar, rights_attested, is_public_domain)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    bookId,
-    title.trim(),
-    (author || 'Unknown').trim(),
-    (description || '').trim(),
-    finalFormat,
-    JSON.stringify(genresArr),
-    (language || 'English').trim(),
-    req.file.originalname,
-    storedFilename,
-    user.id,
-    user.username,
-    user.avatar_url || '',
-    rightsAttested ? 1 : 0,
-    isPublicDomain ? 1 : 0
-  );
+  try {
+    await db.prepare(
+      `INSERT INTO books (id, title, author, description, format, genres, language, original_filename, stored_filename, uploader_id, uploader_name, uploader_avatar, rights_attested, is_public_domain)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      bookId,
+      title.trim(),
+      (author || 'Unknown').trim(),
+      (description || '').trim(),
+      finalFormat,
+      JSON.stringify(genresArr),
+      (language || 'English').trim(),
+      req.file.originalname,
+      storedFilename,
+      user.id,
+      user.username,
+      user.avatar_url || '',
+      rightsAttested ? 1 : 0,
+      isPublicDomain ? 1 : 0
+    );
+  } catch (err) {
+    console.error('Book insert failed:', err);
+    if (blobEnabled) { await deleteFile(BOOKS_PREFIX + storedFilename); }
+    else { try { fs.unlinkSync(stagedPath); } catch (_) {} }
+    return res.status(500).json({ error: 'Failed to record the book.' });
+  }
 
   res.status(201).json({ id: bookId, format: finalFormat });
 });
 
 // --- Delete book (owner only) ---------------------------------------------
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Please sign in to delete books.' });
   }
 
-  const book = db.prepare(`SELECT * FROM books WHERE id = ?`).get(req.params.id);
+  const book = await db.prepare(`SELECT * FROM books WHERE id = ?`).get(req.params.id);
   if (!book) {
     return res.status(404).json({ error: 'Book not found.' });
   }
@@ -206,38 +238,65 @@ router.delete('/:id', (req, res) => {
     return res.status(403).json({ error: 'You can only delete books you uploaded.' });
   }
 
-  // Delete the file from disk
-  const filePath = path.join(UPLOAD_DIR, book.stored_filename);
-  if (fs.existsSync(filePath)) {
-    try { fs.unlinkSync(filePath); } catch (_) {}
+  // Delete the file from storage
+  if (blobEnabled) {
+    await deleteFile(BOOKS_PREFIX + book.stored_filename);
+  } else {
+    const filePath = path.join(UPLOAD_DIR, book.stored_filename);
+    if (fs.existsSync(filePath)) {
+      try { fs.unlinkSync(filePath); } catch (_) {}
+    }
   }
 
   // Delete related records
-  db.prepare(`DELETE FROM reading_progress WHERE book_id = ?`).run(req.params.id);
-  db.prepare(`DELETE FROM reports WHERE book_id = ?`).run(req.params.id);
-  db.prepare(`DELETE FROM books WHERE id = ?`).run(req.params.id);
+  await db.prepare(`DELETE FROM reading_progress WHERE book_id = ?`).run(req.params.id);
+  await db.prepare(`DELETE FROM reports WHERE book_id = ?`).run(req.params.id);
+  await db.prepare(`DELETE FROM bookmarks WHERE book_id = ?`).run(req.params.id);
+  await db.prepare(`DELETE FROM reading_stats WHERE book_id = ?`).run(req.params.id);
+  await db.prepare(`DELETE FROM ratings WHERE book_id = ?`).run(req.params.id);
+  await db.prepare(`DELETE FROM books WHERE id = ?`).run(req.params.id);
 
   res.json({ ok: true });
 });
 
 // --- Serve book file ------------------------------------------------------
-router.get('/:id/file', (req, res) => {
-  const book = db.prepare(`SELECT * FROM books WHERE id = ?`).get(req.params.id);
+router.get('/:id/file', async (req, res) => {
+  const book = await db.prepare(`SELECT * FROM books WHERE id = ?`).get(req.params.id);
   if (!book) return res.status(404).json({ error: 'Book not found.' });
+
+  const contentType = CONTENT_TYPES[book.format] || 'application/octet-stream';
+
+  if (blobEnabled) {
+    const url = await getFileUrl(BOOKS_PREFIX + book.stored_filename);
+    if (!url) return res.status(404).json({ error: 'File not found in storage.' });
+    try {
+      const upstream = await fetch(url);
+      if (!upstream.ok || !upstream.body) {
+        return res.status(502).json({ error: 'File unavailable.' });
+      }
+      res.setHeader('Content-Type', contentType);
+      const len = upstream.headers.get('content-length');
+      if (len) res.setHeader('Content-Length', len);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return Readable.fromWeb(upstream.body).pipe(res);
+    } catch (err) {
+      console.error('Blob fetch failed:', err);
+      return res.status(502).json({ error: 'File unavailable.' });
+    }
+  }
 
   const filePath = path.join(UPLOAD_DIR, book.stored_filename);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found on disk.' });
   }
 
-  const contentType = CONTENT_TYPES[book.format] || 'application/octet-stream';
   res.setHeader('Content-Type', contentType);
   res.sendFile(filePath);
 });
 
 // --- Report a book --------------------------------------------------------
-router.post('/:id/report', (req, res) => {
-  const book = db.prepare(`SELECT id FROM books WHERE id = ?`).get(req.params.id);
+router.post('/:id/report', async (req, res) => {
+  const book = await db.prepare(`SELECT id FROM books WHERE id = ?`).get(req.params.id);
   if (!book) return res.status(404).json({ error: 'Book not found.' });
 
   const { reason } = req.body;
@@ -246,29 +305,29 @@ router.post('/:id/report', (req, res) => {
   }
 
   const reportId = crypto.randomUUID();
-  db.prepare(`INSERT INTO reports (id, book_id, reason) VALUES (?, ?, ?)`).run(
+  await db.prepare(`INSERT INTO reports (id, book_id, reason) VALUES (?, ?, ?)`).run(
     reportId,
     req.params.id,
     reason.trim()
   );
 
   // Auto-flag the book after 3 reports
-  const count = db.prepare(`SELECT COUNT(*) as c FROM reports WHERE book_id = ?`).get(req.params.id).c;
-  if (count >= 3) {
-    db.prepare(`UPDATE books SET status = 'flagged' WHERE id = ?`).run(req.params.id);
+  const count = await db.prepare(`SELECT COUNT(*) as c FROM reports WHERE book_id = ?`).get(req.params.id);
+  if (count && count.c >= 3) {
+    await db.prepare(`UPDATE books SET status = 'flagged' WHERE id = ?`).run(req.params.id);
   }
 
   res.json({ ok: true });
 });
 
 // --- Reading progress -----------------------------------------------------
-router.post('/:id/progress/:clientId', (req, res) => {
+router.post('/:id/progress/:clientId', async (req, res) => {
   const { location } = req.body;
   const bookId = req.params.id;
   const clientId = req.params.clientId;
 
   try {
-    db.prepare(
+    await db.prepare(
       `INSERT INTO reading_progress (id, book_id, client_id, location)
        VALUES (?, ?, ?, ?)
        ON CONFLICT(book_id, client_id) DO UPDATE SET location = excluded.location, updated_at = datetime('now')`
@@ -279,15 +338,15 @@ router.post('/:id/progress/:clientId', (req, res) => {
   }
 });
 
-router.get('/:id/progress/:clientId', (req, res) => {
-  const row = db.prepare(
+router.get('/:id/progress/:clientId', async (req, res) => {
+  const row = await db.prepare(
     `SELECT location FROM reading_progress WHERE book_id = ? AND client_id = ?`
   ).get(req.params.id, req.params.clientId);
   res.json({ location: row ? row.location : '' });
 });
 
 // --- Bookmark: save a bookmark --------------------------------------------
-router.post('/:id/bookmark', (req, res) => {
+router.post('/:id/bookmark', async (req, res) => {
   const { clientId, location, label } = req.body;
   const bookId = req.params.id;
 
@@ -295,11 +354,11 @@ router.post('/:id/bookmark', (req, res) => {
     return res.status(400).json({ error: 'Client ID is required.' });
   }
 
-  const book = db.prepare(`SELECT id FROM books WHERE id = ?`).get(bookId);
+  const book = await db.prepare(`SELECT id FROM books WHERE id = ?`).get(bookId);
   if (!book) return res.status(404).json({ error: 'Book not found.' });
 
   const bookmarkId = crypto.randomUUID();
-  db.prepare(
+  await db.prepare(
     `INSERT INTO bookmarks (id, book_id, client_id, location, label)
      VALUES (?, ?, ?, ?, ?)`
   ).run(bookmarkId, bookId, clientId, location || '', label || '');
@@ -308,17 +367,17 @@ router.post('/:id/bookmark', (req, res) => {
 });
 
 // --- Bookmark: get all bookmarks for a book --------------------------------
-router.get('/:id/bookmarks/:clientId', (req, res) => {
-  const rows = db.prepare(
+router.get('/:id/bookmarks/:clientId', async (req, res) => {
+  const rows = await db.prepare(
     `SELECT * FROM bookmarks WHERE book_id = ? AND client_id = ? ORDER BY created_at DESC`
   ).all(req.params.id, req.params.clientId);
   res.json(rows);
 });
 
 // --- Bookmark: delete a bookmark -------------------------------------------
-router.delete('/:id/bookmarks/:bookmarkId', (req, res) => {
+router.delete('/:id/bookmarks/:bookmarkId', async (req, res) => {
   const { clientId } = req.body;
-  db.prepare(`DELETE FROM bookmarks WHERE id = ? AND client_id = ?`).run(
+  await db.prepare(`DELETE FROM bookmarks WHERE id = ? AND client_id = ?`).run(
     req.params.bookmarkId,
     clientId
   );
@@ -326,7 +385,7 @@ router.delete('/:id/bookmarks/:bookmarkId', (req, res) => {
 });
 
 // --- Reading stats: save reading session -----------------------------------
-router.post('/:id/stats', (req, res) => {
+router.post('/:id/stats', async (req, res) => {
   const { clientId, timeSpent, location } = req.body;
   const bookId = req.params.id;
 
@@ -334,11 +393,11 @@ router.post('/:id/stats', (req, res) => {
     return res.status(400).json({ error: 'Client ID is required.' });
   }
 
-  const book = db.prepare(`SELECT id FROM books WHERE id = ?`).get(bookId);
+  const book = await db.prepare(`SELECT id FROM books WHERE id = ?`).get(bookId);
   if (!book) return res.status(404).json({ error: 'Book not found.' });
 
   const statsId = crypto.randomUUID();
-  db.prepare(
+  await db.prepare(
     `INSERT INTO reading_stats (id, book_id, client_id, time_spent, location)
      VALUES (?, ?, ?, ?, ?)`
   ).run(statsId, bookId, clientId, timeSpent || 0, location || '');
@@ -347,9 +406,9 @@ router.post('/:id/stats', (req, res) => {
 });
 
 // --- Reading stats: get stats for a book -----------------------------------
-router.get('/:id/stats/:clientId', (req, res) => {
-  const row = db.prepare(
-    `SELECT SUM(time_spent) as total_time, location 
+router.get('/:id/stats/:clientId', async (req, res) => {
+  const row = await db.prepare(
+    `SELECT SUM(time_spent) as total_time, location
      FROM reading_stats WHERE book_id = ? AND client_id = ?
      GROUP BY client_id`
   ).get(req.params.id, req.params.clientId);
@@ -360,16 +419,16 @@ router.get('/:id/stats/:clientId', (req, res) => {
 });
 
 // --- Books by a specific user ---------------------------------------------
-router.get('/by-user/:userId', (req, res) => {
-  const rows = db.prepare(
+router.get('/by-user/:userId', async (req, res) => {
+  const rows = await db.prepare(
     `SELECT id, title, author, format, genres, created_at FROM books WHERE uploader_id = ? AND status = 'visible' ORDER BY created_at DESC`
   ).all(req.params.userId);
   res.json(rows);
 });
 
 // --- Genre breakdown for a user -------------------------------------------
-router.get('/genre-stats/:userId', (req, res) => {
-  const rows = db.prepare(
+router.get('/genre-stats/:userId', async (req, res) => {
+  const rows = await db.prepare(
     `SELECT genres FROM books WHERE uploader_id = ? AND status = 'visible'`
   ).all(req.params.userId);
 
@@ -395,9 +454,9 @@ router.get('/genre-stats/:userId', (req, res) => {
 });
 
 // --- Trending books (top N most-read) -------------------------------------
-router.get('/trending', (req, res) => {
+router.get('/trending', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 10, 30);
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT b.id, b.title, b.author, b.format, b.genres,
            COUNT(rp.id) as read_count
     FROM books b
@@ -411,13 +470,13 @@ router.get('/trending', (req, res) => {
 });
 
 // --- Recommendations: books in genres the current user reads most ----------
-router.get('/recommended', (req, res) => {
+router.get('/recommended', async (req, res) => {
   const clientId = req.query.clientId;
   const limit = Math.min(parseInt(req.query.limit, 10) || 8, 20);
 
   let topGenres = [];
   if (req.user) {
-    topGenres = db.prepare(`
+    topGenres = await db.prepare(`
       SELECT b.genres, COUNT(rp.id) as read_count
       FROM reading_progress rp
       JOIN books b ON b.id = rp.book_id
@@ -426,7 +485,7 @@ router.get('/recommended', (req, res) => {
       ORDER BY read_count DESC
     `).all(clientId || req.user.id);
   } else if (clientId) {
-    topGenres = db.prepare(`
+    topGenres = await db.prepare(`
       SELECT b.genres, COUNT(rp.id) as read_count
       FROM reading_progress rp
       JOIN books b ON b.id = rp.book_id
@@ -455,7 +514,7 @@ router.get('/recommended', (req, res) => {
     .map(([g]) => g);
 
   if (!sortedGenres.length) {
-    const rows = db.prepare(`
+    const rows = await db.prepare(`
       SELECT * FROM books WHERE status = 'visible'
       ORDER BY created_at DESC LIMIT ?
     `).all(limit);
@@ -465,7 +524,7 @@ router.get('/recommended', (req, res) => {
   const likeClauses = sortedGenres.map(() => `genres LIKE ?`).join(' OR ');
   const likeParams = sortedGenres.map(g => `%"${g}"%`);
 
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT * FROM books
     WHERE status = 'visible' AND (${likeClauses})
     ORDER BY created_at DESC
@@ -476,9 +535,9 @@ router.get('/recommended', (req, res) => {
 });
 
 // --- Highly rated books ---------------------------------------------------
-router.get('/highly-rated', (req, res) => {
+router.get('/highly-rated', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 10, 30);
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT b.*, ROUND(AVG(r.rating), 1) as avg_rating, COUNT(r.id) as total_ratings
     FROM books b
     JOIN ratings r ON r.book_id = b.id
@@ -492,7 +551,7 @@ router.get('/highly-rated', (req, res) => {
 });
 
 // --- Rating: submit a rating (1-5 stars) ----------------------------------
-router.post('/:id/rate', (req, res) => {
+router.post('/:id/rate', async (req, res) => {
   const { rating, clientId } = req.body;
   const bookId = req.params.id;
 
@@ -504,51 +563,51 @@ router.post('/:id/rate', (req, res) => {
     return res.status(400).json({ error: 'Client ID is required.' });
   }
 
-  const book = db.prepare(`SELECT id FROM books WHERE id = ?`).get(bookId);
+  const book = await db.prepare(`SELECT id FROM books WHERE id = ?`).get(bookId);
   if (!book) return res.status(404).json({ error: 'Book not found.' });
 
   const ratingId = crypto.randomUUID();
-  db.prepare(`
-    INSERT INTO ratings (id, book_id, client_id, rating)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(book_id, client_id) DO UPDATE SET rating = excluded.rating, created_at = datetime('now')
-  `).run(ratingId, bookId, clientId, Math.round(rating));
+  await db.prepare(
+    `INSERT INTO ratings (id, book_id, client_id, rating)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(book_id, client_id) DO UPDATE SET rating = excluded.rating, created_at = datetime('now')`
+  ).run(ratingId, bookId, clientId, Math.round(rating));
 
   // Return updated average
-  const stats = db.prepare(`
-    SELECT ROUND(AVG(rating), 1) as avg_rating, COUNT(*) as total
-    FROM ratings WHERE book_id = ?
-  `).get(bookId);
+  const stats = await db.prepare(
+    `SELECT ROUND(AVG(rating), 1) as avg_rating, COUNT(*) as total
+     FROM ratings WHERE book_id = ?`
+  ).get(bookId);
 
-  res.json({ ok: true, avgRating: stats.avg_rating || 0, totalRatings: stats.total });
+  res.json({ ok: true, avgRating: (stats && stats.avg_rating) || 0, totalRatings: (stats && stats.total) || 0 });
 });
 
 // --- Rating: get average for a book ----------------------------------------
-router.get('/:id/rating', (req, res) => {
+router.get('/:id/rating', async (req, res) => {
   const bookId = req.params.id;
-  const stats = db.prepare(`
-    SELECT ROUND(AVG(rating), 1) as avg_rating, COUNT(*) as total
-    FROM ratings WHERE book_id = ?
-  `).get(bookId);
+  const stats = await db.prepare(
+    `SELECT ROUND(AVG(rating), 1) as avg_rating, COUNT(*) as total
+     FROM ratings WHERE book_id = ?`
+  ).get(bookId);
 
   const userRating = req.query.clientId
-    ? db.prepare(`SELECT rating FROM ratings WHERE book_id = ? AND client_id = ?`).get(bookId, req.query.clientId)
+    ? await db.prepare(`SELECT rating FROM ratings WHERE book_id = ? AND client_id = ?`).get(bookId, req.query.clientId)
     : null;
 
   res.json({
-    avgRating: stats.avg_rating || 0,
-    totalRatings: stats.total,
+    avgRating: (stats && stats.avg_rating) || 0,
+    totalRatings: (stats && stats.total) || 0,
     userRating: userRating ? userRating.rating : null
   });
 });
 
-// --- Rating: get average for multiple books (for grid display) --------------
-router.post('/ratings-batch', (req, res) => {
+// --- Rating: get average for multiple books (for grid display) ------------
+router.post('/ratings-batch', async (req, res) => {
   const { bookIds, clientId } = req.body;
   if (!Array.isArray(bookIds) || !bookIds.length) return res.json({});
 
   const placeholders = bookIds.map(() => '?').join(',');
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT book_id, ROUND(AVG(rating), 1) as avg_rating, COUNT(*) as total
     FROM ratings WHERE book_id IN (${placeholders})
     GROUP BY book_id
@@ -562,9 +621,9 @@ router.post('/ratings-batch', (req, res) => {
   res.json(result);
 });
 
-// --- Get single book (MUST be after all named routes) --------------------
-router.get('/:id', (req, res) => {
-  const book = db.prepare(`SELECT * FROM books WHERE id = ?`).get(req.params.id);
+// --- Get single book (MUST be after all named routes) ---------------------
+router.get('/:id', async (req, res) => {
+  const book = await db.prepare(`SELECT * FROM books WHERE id = ?`).get(req.params.id);
   if (!book) return res.status(404).json({ error: 'Book not found.' });
   res.json(book);
 });

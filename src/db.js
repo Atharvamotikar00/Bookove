@@ -1,37 +1,72 @@
-const { DatabaseSync } = require('node:sqlite');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const DATA_DIR = process.env.VERCEL ? '/tmp' : path.join(__dirname, '..', 'data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+/**
+ * Dual-mode database layer.
+ *
+ *  - Cloud mode: when TURSO_DATABASE_URL (+ TURSO_AUTH_TOKEN) is set, every
+ *    query runs against a persistent Turso/libSQL database. This is what
+ *    makes data survive Vercel deploys and cold starts.
+ *  - Local mode: a node:sqlite file database (data/library.db locally, or
+ *    /tmp on Vercel when no cloud credentials are configured — ephemeral,
+ *    but keeps the app running during setup).
+ *
+ * The API mirrors the old `db.prepare(sql).get/all/run(...)` shape, except
+ * every call returns a Promise — call sites `await` it.
+ */
 
-const db = new DatabaseSync(path.join(DATA_DIR, 'library.db'));
+const TURSO_URL = process.env.TURSO_DATABASE_URL;
+const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN || undefined;
+const useCloud = !!(TURSO_URL && TURSO_TOKEN);
 
-// Check if old provider-based schema is present (lacks password_hash column)
-let needsRecreate = false;
-try {
-  const columns = db.prepare("PRAGMA table_info(users)").all();
-  const hasPasswordHash = columns.some(c => c.name === 'password_hash');
-  if (columns.length > 0 && !hasPasswordHash) {
-    needsRecreate = true;
+let cloud = null;
+let sqlite = null;
+
+if (useCloud) {
+  const { createClient } = require('@libsql/client');
+  cloud = createClient({ url: TURSO_URL, authToken: TURSO_TOKEN });
+  console.log('✅ Using persistent Turso cloud database');
+} else {
+  const { DatabaseSync } = require('node:sqlite');
+  const DATA_DIR = process.env.VERCEL ? '/tmp' : path.join(__dirname, '..', 'data');
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  sqlite = new DatabaseSync(path.join(DATA_DIR, 'library.db'));
+  if (process.env.VERCEL) {
+    console.warn('⚠️  TURSO_DATABASE_URL not set — falling back to ephemeral /tmp database. Data will NOT survive deploys.');
   }
-} catch (_) {
-  // Table does not exist yet
 }
 
-if (needsRecreate) {
-  console.log('🔄 Old OAuth schema detected. Recreating database tables for local authentication...');
-  db.exec(`
-    DROP TABLE IF EXISTS reading_progress;
-    DROP TABLE IF EXISTS reports;
-    DROP TABLE IF EXISTS books;
-    DROP TABLE IF EXISTS sessions;
-    DROP TABLE IF EXISTS follows;
-    DROP TABLE IF EXISTS users;
-  `);
+// --- raw drivers (bypass the boot gate; used by the boot sequence itself) --
+
+async function rawExec(sql) {
+  if (cloud) return cloud.executeMultiple(sql);
+  return sqlite.exec(sql);
 }
 
-db.exec(`
+async function rawAll(sql, params) {
+  if (cloud) {
+    const rs = await cloud.execute({ sql, args: params });
+    return rs.rows;
+  }
+  return sqlite.prepare(sql).all(...params);
+}
+
+async function rawGet(sql, params) {
+  if (cloud) {
+    const rs = await cloud.execute({ sql, args: params });
+    return rs.rows[0]; // undefined when no row, like node:sqlite
+  }
+  return sqlite.prepare(sql).get(...params);
+}
+
+async function rawRun(sql, params) {
+  if (cloud) return cloud.execute({ sql, args: params });
+  return sqlite.prepare(sql).run(...params);
+}
+
+// --- schema + migrations (idempotent) --------------------------------------
+
+const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
@@ -67,18 +102,18 @@ db.exec(`
     title TEXT NOT NULL,
     author TEXT DEFAULT 'Unknown',
     description TEXT DEFAULT '',
-    format TEXT NOT NULL,          -- pdf | epub | txt | mobi
-    genres TEXT DEFAULT '[]',      -- JSON array of genre strings
-    language TEXT DEFAULT 'English', -- book language
+    format TEXT NOT NULL,
+    genres TEXT DEFAULT '[]',
+    language TEXT DEFAULT 'English',
     original_filename TEXT NOT NULL,
-    stored_filename TEXT NOT NULL, -- the file actually served/read
-    uploader_id TEXT,              -- references users.id; who posted this
+    stored_filename TEXT NOT NULL,
+    uploader_id TEXT,
     uploader_name TEXT DEFAULT 'Anonymous',
     uploader_avatar TEXT DEFAULT '',
     uploader_profile_url TEXT DEFAULT '',
     rights_attested INTEGER NOT NULL DEFAULT 0,
     is_public_domain INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'visible', -- visible | flagged | removed
+    status TEXT NOT NULL DEFAULT 'visible',
     file_size INTEGER DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (uploader_id) REFERENCES users(id)
@@ -131,56 +166,82 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (book_id) REFERENCES books(id)
   );
-`);
+`;
 
-// --- Add language column to books if missing ------------------------------
-try {
-  const bookColumnsLang = db.prepare("PRAGMA table_info(books)").all();
-  const hasLang = bookColumnsLang.some(c => c.name === 'language');
-  if (!hasLang) {
-    db.exec(`ALTER TABLE books ADD COLUMN language TEXT DEFAULT 'English'`);
-    console.log('✅ Added language column to books table');
-  }
-} catch (err) {
-  // safe to ignore
+async function tableColumns(table) {
+  // pragma table-valued function works on both node:sqlite and libSQL/Turso
+  return rawAll(`SELECT name FROM pragma_table_info('${table}')`, []);
 }
 
-// --- Add genres column to books if missing --------------------------------
-try {
-  const bookColumns = db.prepare("PRAGMA table_info(books)").all();
-  const hasGenres = bookColumns.some(c => c.name === 'genres');
-  if (!hasGenres) {
-    db.exec(`ALTER TABLE books ADD COLUMN genres TEXT DEFAULT '[]'`);
-    console.log('✅ Added genres column to books table');
+const ready = (async () => {
+  // Recreate tables if an old OAuth-only schema (no password_hash) is found.
+  try {
+    const columns = await tableColumns('users');
+    if (columns.length > 0 && !columns.some(c => c.name === 'password_hash')) {
+      console.log('🔄 Old OAuth schema detected. Recreating database tables...');
+      await rawExec(`
+        DROP TABLE IF EXISTS reading_progress;
+        DROP TABLE IF EXISTS reports;
+        DROP TABLE IF EXISTS bookmarks;
+        DROP TABLE IF EXISTS reading_stats;
+        DROP TABLE IF EXISTS ratings;
+        DROP TABLE IF EXISTS books;
+        DROP TABLE IF EXISTS sessions;
+        DROP TABLE IF EXISTS follows;
+        DROP TABLE IF EXISTS users;
+      `);
+    }
+  } catch (_) {
+    // table does not exist yet — nothing to migrate
   }
-} catch (err) {
-  // safe to ignore
+
+  await rawExec(SCHEMA);
+
+  // Incremental column migrations (idempotent, cheap no-ops once applied).
+  try {
+    const cols = await tableColumns('books');
+    const names = cols.map(c => c.name);
+    if (!names.includes('language')) {
+      await rawRun(`ALTER TABLE books ADD COLUMN language TEXT DEFAULT 'English'`, []);
+      console.log('✅ Added language column to books table');
+    }
+    if (!names.includes('genres')) {
+      await rawRun(`ALTER TABLE books ADD COLUMN genres TEXT DEFAULT '[]'`, []);
+      console.log('✅ Added genres column to books table');
+    }
+  } catch (_) {}
+
+  try {
+    const cols = await tableColumns('users');
+    if (!cols.some(c => c.name === 'google_id')) {
+      await rawRun(`ALTER TABLE users ADD COLUMN google_id TEXT`, []);
+      console.log('✅ Added google_id column to users table');
+    }
+  } catch (_) {}
+})();
+
+// --- public API -------------------------------------------------------------
+
+function prepare(sql) {
+  return {
+    async get(...params) {
+      await ready;
+      return rawGet(sql, params);
+    },
+    async all(...params) {
+      await ready;
+      return rawAll(sql, params);
+    },
+    async run(...params) {
+      await ready;
+      return rawRun(sql, params);
+    },
+  };
 }
 
-// --- Add ratings table if missing -----------------------------------------
-try {
-  db.exec(`CREATE TABLE IF NOT EXISTS ratings (
-    id TEXT PRIMARY KEY,
-    book_id TEXT NOT NULL,
-    client_id TEXT NOT NULL,
-    rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(book_id, client_id),
-    FOREIGN KEY (book_id) REFERENCES books(id)
-  )`);
-} catch (_) {}
-
-// --- Add google_id column if missing (for Google OAuth support) -----------
-try {
-  const columns = db.prepare("PRAGMA table_info(users)").all();
-  const hasGoogleId = columns.some(c => c.name === 'google_id');
-  if (!hasGoogleId) {
-    db.exec(`ALTER TABLE users ADD COLUMN google_id TEXT`);
-    console.log('✅ Added google_id column to users table');
-  }
-} catch (err) {
-  // Column might already exist or table doesn't exist yet — safe to ignore
+async function exec(sql) {
+  await ready;
+  return rawExec(sql);
 }
 
-module.exports = db;
-
+module.exports = { prepare, exec, useCloud };

@@ -2,9 +2,10 @@ const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('../db');
+const { blobEnabled, deleteFile, BOOKS_PREFIX } = require('../utils/storage');
 
 const router = express.Router();
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
+const UPLOAD_DIR = process.env.VERCEL ? '/tmp/uploads' : path.join(__dirname, '..', '..', 'uploads');
 
 function requireAdmin(req, res, next) {
   const key = req.header('x-admin-key');
@@ -18,39 +19,43 @@ function requireAdmin(req, res, next) {
 }
 
 // List everything (including flagged/removed) for review.
-router.get('/books', requireAdmin, (req, res) => {
-  const rows = db.prepare(`SELECT * FROM books ORDER BY created_at DESC`).all();
+router.get('/books', requireAdmin, async (req, res) => {
+  const rows = await db.prepare(`SELECT * FROM books ORDER BY created_at DESC`).all();
   res.json(rows);
 });
 
 // List reports for a book.
-router.get('/books/:id/reports', requireAdmin, (req, res) => {
-  const rows = db
+router.get('/books/:id/reports', requireAdmin, async (req, res) => {
+  const rows = await db
     .prepare(`SELECT * FROM reports WHERE book_id = ? ORDER BY created_at DESC`)
     .all(req.params.id);
   res.json(rows);
 });
 
 // Take down a book (e.g. after a valid copyright complaint).
-router.post('/books/:id/remove', requireAdmin, (req, res) => {
-  const book = db.prepare(`SELECT * FROM books WHERE id = ?`).get(req.params.id);
+router.post('/books/:id/remove', requireAdmin, async (req, res) => {
+  const book = await db.prepare(`SELECT * FROM books WHERE id = ?`).get(req.params.id);
   if (!book) return res.status(404).json({ error: 'Book not found.' });
 
-  db.prepare(`UPDATE books SET status = 'removed' WHERE id = ?`).run(req.params.id);
+  await db.prepare(`UPDATE books SET status = 'removed' WHERE id = ?`).run(req.params.id);
 
-  const filePath = path.join(UPLOAD_DIR, book.stored_filename);
-  if (fs.existsSync(filePath)) {
-    try { fs.unlinkSync(filePath); } catch (_) {}
+  if (blobEnabled) {
+    await deleteFile(BOOKS_PREFIX + book.stored_filename);
+  } else {
+    const filePath = path.join(UPLOAD_DIR, book.stored_filename);
+    if (fs.existsSync(filePath)) {
+      try { fs.unlinkSync(filePath); } catch (_) {}
+    }
   }
 
   res.json({ ok: true });
 });
 
 // Restore a flagged book after review clears it.
-router.post('/books/:id/restore', requireAdmin, (req, res) => {
-  const book = db.prepare(`SELECT id FROM books WHERE id = ?`).get(req.params.id);
+router.post('/books/:id/restore', requireAdmin, async (req, res) => {
+  const book = await db.prepare(`SELECT id FROM books WHERE id = ?`).get(req.params.id);
   if (!book) return res.status(404).json({ error: 'Book not found.' });
-  db.prepare(`UPDATE books SET status = 'visible' WHERE id = ?`).run(req.params.id);
+  await db.prepare(`UPDATE books SET status = 'visible' WHERE id = ?`).run(req.params.id);
   res.json({ ok: true });
 });
 
