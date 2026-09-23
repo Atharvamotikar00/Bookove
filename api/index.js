@@ -16,6 +16,11 @@ const { checkCalibre } = require('../src/utils/convert');
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 
+// Vercel terminates TLS at its edge proxy, so the lambda connection itself is
+// plain HTTP. Without trusting the proxy, Express reports req.protocol as
+// 'http' and cookie-session silently refuses to emit the session cookie.
+app.set('trust proxy', 1);
+
 if (!process.env.SESSION_SECRET) {
   console.warn(
     '⚠️  No SESSION_SECRET set in .env — using a random one for this run. ' +

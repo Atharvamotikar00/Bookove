@@ -14,6 +14,7 @@ const adminRouter = require('./src/routes/admin');
 const { checkCalibre } = require('./src/utils/convert');
 
 const app = express();
+app.set('trust proxy', 1); // honor x-forwarded-proto when hosted behind a proxy
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 
 if (!process.env.SESSION_SECRET) {
